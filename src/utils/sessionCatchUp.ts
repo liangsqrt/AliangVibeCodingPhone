@@ -124,3 +124,31 @@ export function countServerConfirmedMessages(
   }
   return count;
 }
+
+/**
+ * 一轮 after 排水收尾时,transcriptCount(水位)应落到哪个值。
+ *
+ * 常规路径(拉到了行且排完)沿用旧语义:取服务端口径的最大值,保持权威。
+ *
+ * 例外(fetched===0 且锚点被服务端正面确认):服务端明确说「你的尾锚之后
+ * 一行都没有」,而 transcript_count 仍领先本地物化数——超出的部分只能是
+ * **窗口外的更早历史**(position 同位重复时代的存量伤痕让 max(index)+1
+ * 永久小于 count,2026-11-20 ai_oY0tmpeF_xQV 实锤:count=49 vs 45;热窗
+ * 截断同理)。此时若仍写回服务端大数,水位永远 behind,每次 count 变化
+ * 都会再触发一轮注定空转的 catch-up。钳到本地物化真值(两者较大者),
+ * 缺失的更早历史仍由「加载更早」游标路径负责。锚点丢失(anchorMissing)
+ * 或拉到了行时不钳——那两种情况我们并不掌握「窗口即尾部」的证据。
+ */
+export function reconcileTranscriptCountParity(input: {
+  fetched: number;
+  anchorMissing: boolean;
+  lastPageTotal: number;
+  serverCount: number;
+  run: VibeCodingRun;
+}): number {
+  const confirmed = countServerConfirmedMessages(input.run.transcript);
+  if (input.fetched === 0 && !input.anchorMissing) {
+    return Math.max(confirmed, materializedServerMessageCount(input.run));
+  }
+  return Math.max(input.lastPageTotal, input.serverCount, confirmed);
+}

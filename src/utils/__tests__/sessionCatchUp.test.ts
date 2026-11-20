@@ -1,5 +1,6 @@
 import type { AgentMessage, VibeCodingRun } from '../../data/platformModels';
 import {
+  reconcileTranscriptCountParity,
   isClientGeneratedMessageId,
   isSessionBehindTranscript,
   latestServerConfirmedMessageId,
@@ -155,5 +156,85 @@ describe('penultimateServerConfirmedMessageId', () => {
         makeRun([msg('msg-1727769600000-ab12x', undefined, { pending: true })]),
       ),
     ).toBeUndefined();
+  });
+});
+
+describe('reconcileTranscriptCountParity', () => {
+  it('fetched=0 且锚点成立:钳到本地物化真值(position 同位重复伤痕不再让水位永久 behind)', () => {
+    // ai_oY0tmpeF_xQV 实录缩样:尾窗 40 条,索引 8..44(含重复 25/41×3),
+    // 服务端 count=49,max(index)+1=45。空轮 after 已证明窗口即尾部。
+    const indexes = [
+      ...Array.from({ length: 37 }, (_, i) => 8 + i), // 8..44
+      25, 41, 41, // 生产同位重复行
+    ];
+    const transcript = indexes.map((index, i) => msg(`msg_${i}`, index));
+    const run = makeRun(transcript);
+    expect(
+      reconcileTranscriptCountParity({
+        fetched: 0,
+        anchorMissing: false,
+        lastPageTotal: 49,
+        serverCount: 49,
+        run,
+      }),
+    ).toBe(45); // max(confirmed=40, max(index)+1=45)——不再写回 49
+    expect(
+      isSessionBehindTranscript(run, 45),
+    ).toBe(false); // 收敛:下一次触发不再空转
+  });
+
+  it('fetched=0 且锚点成立但本地为空:钳到 confirmed=0(不虚报)', () => {
+    expect(
+      reconcileTranscriptCountParity({
+        fetched: 0,
+        anchorMissing: false,
+        lastPageTotal: 12,
+        serverCount: 12,
+        run: makeRun([]),
+      }),
+    ).toBe(0);
+  });
+
+  it('拉到了行(fetched>0):沿用旧语义,取服务端权威大数', () => {
+    const run = makeRun([msg('msg_a', 0), msg('msg_b', 1)]);
+    expect(
+      reconcileTranscriptCountParity({
+        fetched: 2,
+        anchorMissing: false,
+        lastPageTotal: 30,
+        serverCount: 30,
+        run,
+      }),
+    ).toBe(30);
+  });
+
+  it('锚点丢失(anchorMissing):不钳,保留服务端口径(降级窗口不可信)', () => {
+    const run = makeRun([msg('msg_a', 0), msg('msg_b', 1)]);
+    expect(
+      reconcileTranscriptCountParity({
+        fetched: 0,
+        anchorMissing: true,
+        lastPageTotal: 30,
+        serverCount: 30,
+        run,
+      }),
+    ).toBe(30);
+  });
+
+  it('本地乐观气泡(pending/failed)不抬高钳制值', () => {
+    const run = makeRun([
+      msg('msg_a', 0),
+      msg('msg_b', 1),
+      msg('msg-1727769600000-ab12x', undefined, { pending: true }),
+    ]);
+    expect(
+      reconcileTranscriptCountParity({
+        fetched: 0,
+        anchorMissing: false,
+        lastPageTotal: 20,
+        serverCount: 20,
+        run,
+      }),
+    ).toBe(2);
   });
 });

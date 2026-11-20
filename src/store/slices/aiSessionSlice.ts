@@ -44,6 +44,7 @@ import {
   isSessionBehindTranscript,
   latestServerConfirmedMessageId,
   penultimateServerConfirmedMessageId,
+  reconcileTranscriptCountParity,
 } from '../../utils/sessionCatchUp';
 import {
   shouldEscalateEmptyDetailToRefresh,
@@ -703,11 +704,13 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
             run.id === sessionId
               ? {
                   ...run,
-                  transcriptCount: Math.max(
+                  transcriptCount: reconcileTranscriptCountParity({
+                    fetched,
+                    anchorMissing,
                     lastPageTotal,
                     serverCount,
-                    countServerConfirmedMessages(run.transcript),
-                  ),
+                    run,
+                  }),
                 }
               : run,
           ),
