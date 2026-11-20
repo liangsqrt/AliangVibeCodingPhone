@@ -164,6 +164,7 @@ import { fetchAiSession } from '../../api/sessions';
 import { useConversationScrollController } from './useConversationScrollController';
 import { useConversationTranscript } from './useConversationTranscript';
 import { usePublishedVibeRun } from './usePublishedVibeRun';
+import { useSessionRouteIdentity } from './useSessionRouteIdentity';
 import { useGoalControl, goalRequestErrorMessage } from './useGoalControl';
 import { useSessionHeader } from './useSessionHeader';
 import type { ConversationTurn } from '../../utils/conversationTurns';
@@ -420,7 +421,13 @@ export const VibeCodingSessionScreen: React.FC = () => {
   // with an enabled composer + a "待开始" bubble. The first send creates the
   // real session; createdSessionId then flips to it, swapping draftRun for live.
   const draftConfig = route.params.draftConfig;
-  const [createdSessionId, setCreatedSessionId] = useState(route.params.sessionId);
+  // 会话身份不再裸 useState(route.params.sessionId)：native-stack 的
+  // navigate 命中栈内老实例时只合并 params 不重挂载（freezeOnBlur 还让
+  // 老实例保活），裸 useState 会把界面/订阅/发消息全钉在老会话上——长按
+  // new 串会话事故（2026-11-21）的根因。hook 补上 params 跟随，draft
+  // 首发翻面走它的 setter，语义与原实现一致。
+  const { sessionId: createdSessionId, setSessionId: setCreatedSessionId } =
+    useSessionRouteIdentity(route.params.sessionId);
   const isDraft = !createdSessionId && !!draftConfig;
   const draftRun = useMemo<VibeCodingRun | null>(
     () =>

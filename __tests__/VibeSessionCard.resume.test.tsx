@@ -131,6 +131,10 @@ describe('VibeSessionCard 另起续聊 entry', () => {
     });
     expect(mockNavigate).toHaveBeenCalledWith('VibeCodingSession', {
       sessionId: 'new-session-1',
+      // native-stack navigate 命中栈内老实例时只合并 params：会话域 params
+      // 必须显式清空，防止老实例残留的 approvalId/draftConfig 泄漏进新会话。
+      approvalId: undefined,
+      draftConfig: undefined,
     });
     act(() => renderer.unmount());
   });

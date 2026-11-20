@@ -234,7 +234,14 @@ export const VibeSessionCard = React.memo<VibeSessionCardProps>(
         });
         setNotice('');
         setMenuVisible(false);
-        navigation.navigate('VibeCodingSession', { sessionId: newSessionId });
+        // navigate 会命中栈内已存在的 VibeCodingSession 实例（native-stack
+        // 合并 params 不重挂载）：显式清掉会话域 params（approvalId /
+        // draftConfig），防止老实例残留的键泄漏进新会话上下文。
+        navigation.navigate('VibeCodingSession', {
+          sessionId: newSessionId,
+          approvalId: undefined,
+          draftConfig: undefined,
+        });
       } catch {
         setNotice(t('sessionCard.resumeCreateFailed'));
       } finally {
@@ -271,7 +278,12 @@ export const VibeSessionCard = React.memo<VibeSessionCardProps>(
         });
         setNotice('');
         setMenuVisible(false);
-        navigation.navigate('VibeCodingSession', { sessionId: newSessionId });
+        // 同上：navigate 命中栈内老实例时显式清会话域 params。
+        navigation.navigate('VibeCodingSession', {
+          sessionId: newSessionId,
+          approvalId: undefined,
+          draftConfig: undefined,
+        });
       } catch {
         setNotice(t('sessionCard.newSessionCreateFailed'));
       } finally {
