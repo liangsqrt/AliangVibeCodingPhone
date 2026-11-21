@@ -2619,6 +2619,51 @@ export const VibeCodingSessionScreen: React.FC = () => {
     setRecallDraft(null);
   }, []);
 
+  // 身份切换（params 跟随 hook 翻面）时的局部态清扫：会话域草稿/挂起态
+  // 都是 per-session 的，navigate 复用老实例进入新会话时不能带过去
+  // （2026-11-21 长按 new 串会话事故的同族收口：老会话输入框草稿/待发
+  // 附件/撤回编辑态/goal 草稿/审批勾选泄漏进新会话）。voiceStt/
+  // pendingAssets/recallDraft 走 ref 间接引用，依赖数组只留 sessionId，
+  // 避免每渲染重跑误清用户输入。挂载首过（identityRef 初值=首渲染身份）
+  // 不触发：审批中心深链的 approvalId、创建页 replace 挂载的 draftConfig
+  // 都是合法入场形态。不清 sendingMessage/interruptingTurn：goal 翻面
+  // （enterGoalSession）与 draft 首发建会话成功也在同一实例上换身份，
+  // 此刻新会话首个回合在途，清了会掐掉发送 spinner；两者各有终态收口。
+  const identityRef = useRef(createdSessionId);
+  const voiceSttRef = useRef(voiceStt);
+  voiceSttRef.current = voiceStt;
+  const pendingAssetsRef = useRef(pendingAssets);
+  pendingAssetsRef.current = pendingAssets;
+  useEffect(() => {
+    if (identityRef.current === createdSessionId) return;
+    identityRef.current = createdSessionId;
+    inputRef.current = '';
+    composerRef.current?.setText('');
+    setVoiceDraft('');
+    setAutoFocusText(false);
+    voiceSttRef.current.cancel();
+    dictationRef.current = { ...IDLE_DICTATION };
+    dictationAppliedRef.current = false;
+    if (dictationNoticeTimerRef.current) clearTimeout(dictationNoticeTimerRef.current);
+    setDictationNotice(null);
+    setPendingAssets([]);
+    setRecallDraft(null);
+    setGoalDraftActive(false);
+    setApprovalSelections({});
+    setApprovalExpansions({});
+    setQuickPolicyFor(null);
+    setToolsMenuVisible(false);
+    // 幽灵 params 兜底：navigate 浅合并只覆盖传入键——从只带 sessionId 的
+    // 入口（通知中心/审批中心/列表/fork）命中栈内老实例时，老实例的
+    // draftConfig/approvalId 会残留，这里统一清（幂等）。
+    if (
+      route.params.approvalId !== undefined ||
+      route.params.draftConfig !== undefined
+    ) {
+      navigation.setParams({ approvalId: undefined, draftConfig: undefined });
+    }
+  }, [createdSessionId, navigation, route.params]);
+
   // 发送时刻的运行中收口：锚点回合仍在跑则先 stop，轮询 runState 终态
   // （上限 ~8s；与 stop 键同一 interrupt 通道）。返回 true=可以继续撤回发送。
   const ensureRecallTurnStopped = useCallback(async (): Promise<boolean> => {
