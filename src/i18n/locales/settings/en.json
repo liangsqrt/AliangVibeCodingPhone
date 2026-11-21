@@ -2,6 +2,7 @@
   "title": "Settings",
   "section_appearance": "Appearance",
   "section_preferences": "Preferences",
+  "listenerEntry": "Listeners",
   "language": {
     "label": "Language",
     "english": "English",
@@ -61,7 +62,8 @@
       "session_done": "Session completed",
       "session_failed": "Session failed",
       "device_offline": "Device offline",
-      "device_online": "Device online"
+      "device_online": "Device online",
+      "listener": "Listeners"
     }
   },
   "account": {

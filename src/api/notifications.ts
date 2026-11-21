@@ -5,7 +5,17 @@ export interface ServerNotification {
   id: string;
   notification_id: string;
   user_id: string;
-  type: 'approval' | 'completed' | 'error' | 'device_offline' | 'device_online';
+  // listener.*:监听器事件通知(面板 toast/角标 + 通知中心行)。三项共用
+  // 「监听器」标签与 ListenerPanel 落点;见 utils/notificationDeliveryPolicy。
+  type:
+    | 'approval'
+    | 'completed'
+    | 'error'
+    | 'device_offline'
+    | 'device_online'
+    | 'listener.triggered'
+    | 'listener.overflow'
+    | 'listener.expired';
   title: string;
   body: string;
   device_id?: string;

@@ -31,17 +31,24 @@ const notificationTypeKey: Record<PushNotificationItem['type'], string> = {
   error: 'notification.typeError',
   device_offline: 'notification.typeOffline',
   device_online: 'notification.typeOnline',
+  // listener.* 三态共用「监听器」标签,落点统一指向监听器面板。
+  'listener.triggered': 'notification.typeListener',
+  'listener.overflow': 'notification.typeListener',
+  'listener.expired': 'notification.typeListener',
 };
 
 const notificationTypeChip: Record<
   PushNotificationItem['type'],
-  'warning' | 'success' | 'error' | 'neutral'
+  'warning' | 'success' | 'error' | 'neutral' | 'info'
 > = {
   approval: 'warning',
   completed: 'success',
   error: 'error',
   device_offline: 'neutral',
   device_online: 'neutral',
+  'listener.triggered': 'info',
+  'listener.overflow': 'warning',
+  'listener.expired': 'neutral',
 };
 
 const notificationIcon: Record<PushNotificationItem['type'], IconName> = {
@@ -50,6 +57,9 @@ const notificationIcon: Record<PushNotificationItem['type'], IconName> = {
   error: 'warning',
   device_offline: 'device',
   device_online: 'device',
+  'listener.triggered': 'bell',
+  'listener.overflow': 'bell',
+  'listener.expired': 'bell',
 };
 
 export const NotificationCenterScreen: React.FC = () => {
@@ -119,6 +129,16 @@ export const NotificationCenterScreen: React.FC = () => {
 
       if (item.type === 'approval' && item.approvalId) {
         navigation.navigate('ApprovalCenter');
+        return;
+      }
+
+      // 监听器通知:直接落到监听器面板(事件明细/复活/删除都在那里)。
+      if (
+        item.type === 'listener.triggered' ||
+        item.type === 'listener.overflow' ||
+        item.type === 'listener.expired'
+      ) {
+        navigation.navigate('ListenerPanel');
         return;
       }
 

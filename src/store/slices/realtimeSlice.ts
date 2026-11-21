@@ -90,6 +90,7 @@ type RealtimeSlice = Pick<
   | 'eventHistory' | 'eventHistoryPages' | 'loadEventHistory'
   | 'initializeFromServer' | 'refreshFromServer' | 'disconnectFromServer'
   | 'resetSessionData' | 'markStale'
+  | 'listenerUnreadCount' | 'resetListenerUnread'
 >;
 
 let refreshInFlight: Promise<RefreshOutcome> | null = null;
@@ -313,4 +314,8 @@ export const createRealtimeSlice: StateCreator<ControlCenterState, [], [], Realt
   },
 
   markStale: () => set({ stale: true }),
+
+  // 监听器面板未读清零:面板 useFocusEffect 调用(见 ListenerPanelScreen)。
+  listenerUnreadCount: 0,
+  resetListenerUnread: () => set({ listenerUnreadCount: 0 }),
 });

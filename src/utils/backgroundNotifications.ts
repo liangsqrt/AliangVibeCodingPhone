@@ -5,7 +5,8 @@ export type BackgroundNotificationType =
   | 'session_done'
   | 'session_failed'
   | 'device_offline'
-  | 'device_online';
+  | 'device_online'
+  | 'listener';
 
 export interface PendingLocalNotification {
   /** Server notification identity, used for delivery dedupe and read sync. */
@@ -75,6 +76,14 @@ const notificationType = (
 ): BackgroundNotificationType => {
   if (type === 'completed') return 'session_done';
   if (type === 'error') return 'session_failed';
+  // listener.triggered / listener.overflow / listener.expired → 一个用户开关位。
+  if (
+    type === 'listener.triggered' ||
+    type === 'listener.overflow' ||
+    type === 'listener.expired'
+  ) {
+    return 'listener';
+  }
   return type;
 };
 

@@ -130,6 +130,10 @@ export const CommandCenterScreen: React.FC = () => {
   const previewLinks = useControlCenterStore(state => state.previewLinks);
   const vibeRuns = useStableVibeRuns();
   const notifications = useControlCenterStore(state => state.notifications);
+  // 监听器面板未读(listener.* 通知累计,面板聚焦清零)——快捷入口角标。
+  const listenerUnreadCount = useControlCenterStore(
+    state => state.listenerUnreadCount,
+  );
   // Only conversation-lifecycle / approval events drive the home feed. Filtering
   // at the selector (via useShallow) keeps high-frequency agent.delta / terminal
   // events from re-rendering the entire home screen on every token.
@@ -764,6 +768,17 @@ export const CommandCenterScreen: React.FC = () => {
             onPress={() => navigation.navigate('DeviceCameraScanner')}
             style={styles.actionMiniTile}
           />
+          {/* 监听器面板快捷入口:未读数作 value,有新事件时点亮 primary。 */}
+          <View testID="cc-listener-tile" style={styles.actionMiniTile}>
+            <ActionTile
+              icon="bell"
+              label={t('commandCenter.actionCaptionListeners')}
+              value={listenerUnreadCount > 0 ? `${listenerUnreadCount}` : undefined}
+              tone={listenerUnreadCount > 0 ? 'primary' : 'neutral'}
+              mini
+              onPress={() => navigation.navigate('ListenerPanel')}
+            />
+          </View>
         </View>
 
         <View style={styles.sectionHeader}>

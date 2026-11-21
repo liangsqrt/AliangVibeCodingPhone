@@ -79,6 +79,9 @@ export type RootStackParamList = {
     | undefined;
   ApprovalCenter: undefined;
   NotificationCenter: undefined;
+  // 监听器面板:查看/复活/删除服务端 listeners(file_tail/process_exit/
+  // http_poll/webhook 源),展开看最近触发事件。无参数,聚焦时自拉取。
+  ListenerPanel: undefined;
   Preview: { previewId: string };
   // Me 页「关于」子页:版本/检查更新/隐私政策/删除账号集中页(Me 页只留入口)。
   About: undefined;

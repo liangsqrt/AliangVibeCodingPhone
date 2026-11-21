@@ -120,6 +120,7 @@
     "actionCaptionActive": "active",
     "actionCaptionEvents": "events",
     "actionCaptionResults": "results",
+    "actionCaptionListeners": "Listeners",
     "emptyProjectsTitle": "No active projects",
     "emptyProjectsBody": "Projects with recent activity appear here.",
     "feedKind": {

@@ -76,6 +76,7 @@ import { createFileDownloadSlice } from './slices/fileDownloadSlice';
 import { createTransferSlice } from './slices/transferSlice';
 import { reconcileStructured } from './slices/structuredSlice';
 import { attachTranscriptCache } from './transcriptCache';
+import { useToastStore } from './toastStore';
 
 const EMPTY_SESSION_APPROVALS: ControlCenterState['approvals'] = [];
 
@@ -84,6 +85,17 @@ const notificationUnreadDelta = (
   incoming: PushNotificationItem,
 ): number =>
   Number(!incoming.read) - Number(Boolean(existing && !existing.read));
+
+/** listener.* 三态(triggered/overflow/expired)共用的面板落点判定。 */
+export function isListenerNotificationType(
+  type: PushNotificationItem['type'],
+): boolean {
+  return (
+    type === 'listener.triggered' ||
+    type === 'listener.overflow' ||
+    type === 'listener.expired'
+  );
+}
 
 // Re-export the domain types so the 21 consumer files keep importing them from
 // this module — their import paths (`../store/controlCenterStore`) stay valid.
@@ -1515,6 +1527,14 @@ export const useControlCenterStore = create<ControlCenterState>()(
               const nextNotification = serverNotificationToClient(
                 transportEvent.notification,
               );
+              // 监听器通知:轻量实时面——toast 弹标题 + 面板未读角标 +1
+              // (面板聚焦时 resetListenerUnread 清零)。列表/事件落账走下方
+              // 通用 notification 管线,不另起数据结构。
+              if (isListenerNotificationType(nextNotification.type)) {
+                useToastStore
+                  .getState()
+                  .show(nextNotification.title, 'info');
+              }
               const approvalDecision =
                 nextNotification.approvalId &&
                 nextNotification.type !== 'approval'
@@ -1538,6 +1558,11 @@ export const useControlCenterStore = create<ControlCenterState>()(
                       nextNotification,
                     ),
                 ),
+                listenerUnreadCount: isListenerNotificationType(
+                  nextNotification.type,
+                )
+                  ? state.listenerUnreadCount + 1
+                  : state.listenerUnreadCount,
                 approvals: approvalDecision
                   ? state.approvals.map(item =>
                       item.id === nextNotification.approvalId

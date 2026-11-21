@@ -14,7 +14,9 @@ export type NotificationTapTarget =
       params: { sessionId: string; approvalId?: string };
     }
   | { route: 'DeviceDetail'; params: { deviceId: string } }
-  | { route: 'NotificationCenter'; params: undefined };
+  | { route: 'NotificationCenter'; params: undefined }
+  // 监听器通知(listener.triggered/overflow/expired):落到监听器面板。
+  | { route: 'ListenerPanel'; params: undefined };
 
 const stringValue = (value: unknown): string | undefined =>
   typeof value === 'string' && value.trim() ? value : undefined;
@@ -25,6 +27,16 @@ export function resolveNotificationTapTarget(
   if (!data) return null;
   if (data.type === 'summary') {
     return { route: 'NotificationCenter', params: undefined };
+  }
+  // 后台系统通知的 data.type 已被 backgroundNotifications 归并为 'listener',
+  // 前台直判定用原始三态——两条形态都要命中,否则后台通知点击永远落空。
+  if (
+    data.type === 'listener' ||
+    data.type === 'listener.triggered' ||
+    data.type === 'listener.overflow' ||
+    data.type === 'listener.expired'
+  ) {
+    return { route: 'ListenerPanel', params: undefined };
   }
   const deviceId = stringValue(data.deviceId);
   if ((data.type === 'device_offline' || data.type === 'device_online') && deviceId) {

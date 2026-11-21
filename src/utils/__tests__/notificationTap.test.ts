@@ -46,6 +46,26 @@ describe('resolveNotificationTapTarget', () => {
     });
   });
 
+  // 监听器通知两形态都要落 ListenerPanel:后台系统通知的 data.type 已被
+  // backgroundNotifications 归并为 'listener';前台直判定用原始三态。
+  it('opens the listener panel for the mapped background type', () => {
+    expect(
+      resolveNotificationTapTarget({ type: 'listener' }),
+    ).toEqual({ route: 'ListenerPanel', params: undefined });
+  });
+
+  it('opens the listener panel for the raw listener.* types', () => {
+    for (const type of [
+      'listener.triggered',
+      'listener.overflow',
+      'listener.expired',
+    ]) {
+      expect(
+        resolveNotificationTapTarget({ type }),
+      ).toEqual({ route: 'ListenerPanel', params: undefined });
+    }
+  });
+
   it('rejects malformed or missing target IDs', () => {
     expect(
       resolveNotificationTapTarget({ type: 'approval', approvalId: 'a1' }),

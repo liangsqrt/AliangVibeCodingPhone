@@ -2,6 +2,7 @@
   "title": "设置",
   "section_appearance": "外观",
   "section_preferences": "通用",
+  "listenerEntry": "监听器",
   "language": {
     "label": "语言",
     "english": "English",
@@ -61,7 +62,8 @@
       "session_done": "会话已完成",
       "session_failed": "会话失败",
       "device_offline": "设备离线",
-      "device_online": "设备上线"
+      "device_online": "设备上线",
+      "listener": "监听器"
     }
   },
   "account": {
