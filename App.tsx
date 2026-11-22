@@ -85,6 +85,8 @@ function AppContent({ debugDeviceTerminal }: AppInitialProps = {}) {
             navigationRef.navigate('VibeCodingSession', target.params);
           } else if (target.route === 'DeviceDetail') {
             navigationRef.navigate('DeviceDetail', target.params);
+          } else if (target.route === 'ListenerPanel') {
+            navigationRef.navigate('ListenerPanel');
           } else {
             navigationRef.navigate('NotificationCenter');
           }

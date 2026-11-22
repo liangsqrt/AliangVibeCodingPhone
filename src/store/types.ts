@@ -283,7 +283,17 @@ export interface ApprovalRequest {
 
 export interface PushNotificationItem {
   id: string;
-  type: 'approval' | 'completed' | 'error' | 'device_offline' | 'device_online';
+  // 与 api/notifications.ts 的 ServerNotification.type 保持同构;listener.*
+  // 由监听器面板消费(toast + listenerUnreadCount),通知中心给回退标签。
+  type:
+    | 'approval'
+    | 'completed'
+    | 'error'
+    | 'device_offline'
+    | 'device_online'
+    | 'listener.triggered'
+    | 'listener.overflow'
+    | 'listener.expired';
   title: string;
   body: string;
   deviceId?: string;
@@ -523,6 +533,12 @@ export interface ControlCenterState {
   approvalHistoryPage: HistoryPageState;
   notifications: PushNotificationItem[];
   unreadNotificationsTotal: number;
+  /**
+   * 监听器面板未读角标:notification.created 且 type 以 'listener' 开头时 +1,
+   * 面板聚焦时清零(resetListenerUnread)。与全局 unreadNotificationsTotal
+   * 分账——那是通知中心的口径,这是面板自己的落点提示。
+   */
+  listenerUnreadCount: number;
   notificationHistory: PushNotificationItem[];
   notificationHistoryPage: HistoryPageState;
   events: UnifiedEvent[];
@@ -562,6 +578,8 @@ export interface ControlCenterState {
   resetSessionData: () => void;
   markStale: () => void;
   handleTransportEvent: (event: PlatformTransportEvent) => void;
+  /** 监听器面板聚焦时清零 listenerUnreadCount。 */
+  resetListenerUnread: () => void;
   renameDevice: (deviceId: string, name: string) => Promise<BindDeviceResult>;
   setDevicePeerExec: (deviceId: string, enabled: boolean) => Promise<BindDeviceResult>;
   setDevicePeerFetch: (deviceId: string, enabled: boolean) => Promise<BindDeviceResult>;

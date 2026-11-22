@@ -144,6 +144,7 @@
     "actionCaptionActive": "活跃",
     "actionCaptionEvents": "事件",
     "actionCaptionResults": "结果",
+    "actionCaptionListeners": "监听器",
     "emptyProjectsTitle": "暂无活跃项目",
     "emptyProjectsBody": "最近有交互的项目会显示在这里。",
     "feedKind": {

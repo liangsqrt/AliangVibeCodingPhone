@@ -2378,6 +2378,7 @@ export const emptySessionData = () => ({
   },
   notifications: [],
   unreadNotificationsTotal: 0,
+  listenerUnreadCount: 0,
   notificationHistory: [],
   notificationHistoryPage: {
     initialized: false,

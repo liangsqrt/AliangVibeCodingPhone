@@ -46,7 +46,8 @@ export type NotifiableEventType =
   | 'session_done'
   | 'session_failed'
   | 'device_offline'
-  | 'device_online';
+  | 'device_online'
+  | 'listener';
 
 /**
  * Single source of truth for the notifiable type list — every UI that iterates
@@ -59,6 +60,7 @@ export const NOTIFIABLE_EVENT_TYPES: readonly NotifiableEventType[] = [
   'session_failed',
   'device_offline',
   'device_online',
+  'listener',
 ];
 
 export type NotificationPrefs = Record<NotifiableEventType, boolean>;
@@ -69,6 +71,7 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   session_failed: true,
   device_offline: true,
   device_online: true,
+  listener: true,
 };
 
 /**

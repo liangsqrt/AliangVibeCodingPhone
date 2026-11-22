@@ -71,6 +71,11 @@ export const SettingsScreen: React.FC = () => {
   const projects = useControlCenterStore(state => state.projects);
   const approvals = useControlCenterStore(state => state.approvals);
   const notifications = useControlCenterStore(state => state.notifications);
+  // 监听器面板入口行的未读角标(notification.created 的 listener.* 事件累计,
+  // 面板聚焦清零)。
+  const listenerUnreadCount = useControlCenterStore(
+    state => state.listenerUnreadCount,
+  );
   const user = useSessionStore(state => state.user);
   const logout = useSessionStore(state => state.logout);
   const operatorName = useSessionStore(state => state.operatorName);
@@ -756,6 +761,31 @@ export const SettingsScreen: React.FC = () => {
               variant="outline"
               style={styles.logoutBtn}
             />
+
+            {/* 监听器面板入口:查看/复活/删除服务端 listeners。 */}
+            <GlassPanel style={[styles.panel, styles.aboutEntryPanel]}>
+              <TouchableOpacity
+                style={styles.settingRow}
+                onPress={() => navigation.navigate('ListenerPanel')}
+                accessibilityRole="button"
+                testID="settings-listener-entry">
+                <View style={styles.settingCopy}>
+                  <Text style={[theme.typography.bodyMd, { color: theme.colors.onSurface }]}>
+                    {t('listenerEntry')}
+                  </Text>
+                </View>
+                {listenerUnreadCount > 0 ? (
+                  <Text
+                    style={[theme.typography.labelSm, { color: theme.colors.primary }]}
+                    numberOfLines={1}>
+                    {listenerUnreadCount}
+                  </Text>
+                ) : null}
+                <Text style={[theme.typography.labelMd, { color: theme.colors.primary }]}>
+                  ›
+                </Text>
+              </TouchableOpacity>
+            </GlassPanel>
 
             {/* 「关于」子页入口:版本/检查更新/隐私政策/删除账号已集中迁移。 */}
             <GlassPanel style={[styles.panel, styles.aboutEntryPanel]}>

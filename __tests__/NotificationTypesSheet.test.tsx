@@ -39,12 +39,12 @@ describe('NotificationTypesSheet', () => {
     useSessionStore.setState({
       notificationPrefs: {
         approval: true, session_done: true, session_failed: true,
-        device_offline: true, device_online: true,
+        device_offline: true, device_online: true, listener: true,
       },
     });
   });
 
-  test('renders one switch row per notifiable type (5 rows)', () => {
+  test('renders one switch row per notifiable type (6 rows)', () => {
     let r!: ReactTestRenderer.ReactTestRenderer;
     act(() => { r = renderSheet(); });
     const labels = r.root.findAllByType(Text).map(t => String(t.props.children ?? ''));
@@ -53,7 +53,8 @@ describe('NotificationTypesSheet', () => {
     expect(labels).toContain('会话失败');
     expect(labels).toContain('设备离线');
     expect(labels).toContain('设备上线');
-    expect(r.root.findAllByType(Switch)).toHaveLength(5);
+    expect(labels).toContain('监听器');
+    expect(r.root.findAllByType(Switch)).toHaveLength(6);
   });
 
   test('toggling a switch writes back to the store', () => {

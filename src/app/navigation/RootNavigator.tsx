@@ -29,6 +29,7 @@ import { SessionSettingsScreen } from '../../screens/vibecoding/SessionSettingsS
 import { ApprovalCenterScreen } from '../../screens/operations/ApprovalCenterScreen';
 import { EventStreamScreen } from '../../screens/operations/EventStreamScreen';
 import { NotificationCenterScreen } from '../../screens/operations/NotificationCenterScreen';
+import { ListenerPanelScreen } from '../../screens/operations/ListenerPanelScreen';
 import { PreviewScreen } from '../../screens/preview/PreviewScreen';
 import { AboutScreen } from '../../screens/settings/AboutScreen';
 import { useControlCenterStore } from '../../store/controlCenterStore';
@@ -277,6 +278,7 @@ export const RootNavigator = ({ debugDeviceTerminal }: RootNavigatorProps) => {
           <Stack.Screen name="EventStream" component={EventStreamScreen} />
           <Stack.Screen name="ApprovalCenter" component={ApprovalCenterScreen} />
           <Stack.Screen name="NotificationCenter" component={NotificationCenterScreen} />
+          <Stack.Screen name="ListenerPanel" component={ListenerPanelScreen} />
           <Stack.Screen name="Preview" component={PreviewScreen} />
           <Stack.Screen name="About" component={AboutScreen} />
         </>
