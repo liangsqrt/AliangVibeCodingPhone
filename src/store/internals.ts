@@ -875,6 +875,10 @@ export function serverAiSessionToVibeRun(
     origin:
       session.origin ??
       (session.session_id.startsWith('ai_import_') ? 'tui' : 'phone'),
+    // 原始 status 旁路保存(纯函数,直接取 wire 值):mapSessionStatus 把
+    // closed 归一化成 completed(列表/假完成守卫依赖,不可改),聊天页判断
+    // 「用户主动关闭」需要原值——见 platformModels.rawStatus。
+    rawStatus: session.status,
     // Mark detail-resolved only when there is actual content. An empty array is
     // truthy in JS, so the old `session.transcript || session.events` form
     // marked a snapshot whose arrays were `[]` as "loaded" and suppressed the
@@ -1337,6 +1341,10 @@ export function mergeVibeRunSnapshot(
     sourceSessionId: incoming.sourceSessionId ?? existing.sourceSessionId,
     // 来源(诞生地)不可变: 映射层总会打满, incoming 优先即可。
     origin: incoming.origin ?? existing.origin,
+    // 同 attachmentsCapability 先例:不带原始 status 的部分快照(列表/重命名/
+    // 打断响应)不得把已知的 rawStatus 抹成 undefined,否则聊天页的「已关闭」
+    // 横幅会在一次无关快照后消失。
+    rawStatus: incoming.rawStatus ?? existing.rawStatus,
     purpose: incoming.purpose ?? existing.purpose,
     goalSummary,
   };

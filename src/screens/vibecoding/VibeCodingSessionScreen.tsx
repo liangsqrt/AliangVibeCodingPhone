@@ -137,6 +137,7 @@ import {
 import { sessionApprovalSuppressPlanKeys } from '../../utils/messageRendering';
 import { GOAL_UI_ENABLED } from '../../config/featureFlags';
 import { sendFailureText, sessionBusyErrorText } from '../../utils/sessionBusyError';
+import { ApiResponseError } from '../../api/client';
 import { useNowTick } from '../../hooks/useNowTick';
 import { useIncrementalList } from '../../hooks/useIncrementalList';
 import {
@@ -2373,9 +2374,56 @@ export const VibeCodingSessionScreen: React.FC = () => {
   });  // failed 相位不再锁 composer:失败只是「上一轮没收到回复」,会话仍可继续——发新
   // 消息(或点失败消息旁的「重试」)会经服务端 claimAiSessionForRun 把 error 翻回
   // running。失败原因由底部气泡 failedLabel(「会话失败 · 网关502…」)承担,这里不阻断输入。
+  // ── 用户主动关闭的 phone 族会话(2026-11-22 agentcore 发送静默失败 RCA)──────
+  // mapSessionStatus 把 closed 归一化成 completed(列表排序/假完成守卫依赖该
+  // 语义,不可改),聊天页要区分「真被关了」只能读 rawStatus 旁路(见
+  // platformModels.rawStatus / serverAiSessionToVibeRun)。local- 与 ai_import_
+  // 前缀的会话 server 侧发送即静默 resume、不会回 409 session_closed,所以
+  // 只有其余前缀(phone 族)才进入「已关闭」UI 态:横幅 + 重开 + composer 锁。
+  const isClosedPhoneSession =
+    !isDraft &&
+    session?.rawStatus === 'closed' &&
+    !session.id.startsWith('local-') &&
+    !session.id.startsWith('ai_import_');
+  const [closedReopening, setClosedReopening] = useState(false);
+  const [closedReopenError, setClosedReopenError] = useState('');
+  // 重新打开:PATCH status=idle(updateAgentSession 会把服务端返回的权威快照
+  // merge 回 store,rawStatus 翻回 idle → 横幅随之消失),再补一次详情对账。
+  const handleReopenClosedSession = useCallback(() => {
+    if (!session || closedReopening) return;
+    setClosedReopening(true);
+    setClosedReopenError('');
+    void updateAgentSession(session.id, { status: 'idle' })
+      .then(() => {
+        // 详情对账(fire-and-forget):失败不打断——状态权威已在 PATCH 响应里。
+        void loadAgentSessionDetail(session.id).catch(() => {});
+      })
+      .catch((error: unknown) => {
+        // 异常必须有状态返回:失败码映射成横幅文案,按钮点了不许没反应。
+        // 409 ai_run_status_use_lifecycle_action = 会话状态已被 runState 接管
+        // (如终止时落了 cancelled),服务端不变量禁止 PATCH 改 status。
+        const detail =
+          error instanceof ApiResponseError
+            ? error.code || error.message
+            : error instanceof Error
+              ? error.message
+              : String(error ?? 'unknown');
+        setClosedReopenError(
+          error instanceof ApiResponseError &&
+            error.status === 409 &&
+            error.code === 'ai_run_status_use_lifecycle_action'
+            ? t('session.closedBannerReopenLifecycle')
+            : t('session.closedBannerReopenFailed', { detail }),
+        );
+      })
+      .finally(() => setClosedReopening(false));
+  }, [session, closedReopening, updateAgentSession, loadAgentSessionDetail, t]);
   const composerReadOnlyReason = isDraft
     ? undefined
-    : session?.purpose !== 'goal' && tuiDrivenRunning && !canSteerExternal
+    : isClosedPhoneSession
+      // 会话已关闭:锁链最前——关闭态优先级高于一切运行态锁,去处由重开横幅承担。
+      ? t('session.composer.sessionClosedReadOnly')
+      : session?.purpose !== 'goal' && tuiDrivenRunning && !canSteerExternal
       // TUI 驱动回合运行中且设备无外部插话通道：composer 只读并说明去处
       // （不变量：不接受插话就不得出现「可输入但无发送键」，G1b）。有
       // ai_steer_external 的设备可插话，不再只读。
@@ -2653,6 +2701,10 @@ export const VibeCodingSessionScreen: React.FC = () => {
     setApprovalExpansions({});
     setQuickPolicyFor(null);
     setToolsMenuVisible(false);
+    // 已关闭横幅的失败文案是 per-session 的,navigate 复用实例进新会话不得
+    // 带过去;重开在途态同理(新会话没有可重开的东西)。
+    setClosedReopenError('');
+    setClosedReopening(false);
     // 幽灵 params 兜底：navigate 浅合并只覆盖传入键——从只带 sessionId 的
     // 入口（通知中心/审批中心/列表/fork）命中栈内老实例时，老实例的
     // draftConfig/approvalId 会残留，这里统一清（幂等）。
@@ -4685,6 +4737,55 @@ export const VibeCodingSessionScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           ) : null}
+          {/* 已关闭的 phone 族会话横幅(isClosedPhoneSession,见上方派生):状态
+              说明 + 重开入口。重开失败码也落在这里(异常必须有状态返回)。 */}
+          {isClosedPhoneSession ? (
+            <View style={styles.closedSessionBannerRow}>
+              <View style={styles.closedSessionBannerTextWrap}>
+                <Text
+                  style={[
+                    theme.typography.bodySm,
+                    styles.closedSessionBannerTitle,
+                  ]}
+                  numberOfLines={2}
+                >
+                  {t('session.closedBanner')}
+                </Text>
+                {closedReopenError ? (
+                  <Text
+                    style={[
+                      theme.typography.codeSm,
+                      styles.closedSessionBannerError,
+                    ]}
+                    numberOfLines={3}
+                  >
+                    {closedReopenError}
+                  </Text>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={t('session.closedBannerReopen')}
+                onPress={handleReopenClosedSession}
+                disabled={closedReopening}
+                activeOpacity={0.75}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.closedSessionReopenButton}
+              >
+                <Text
+                  style={[
+                    theme.typography.codeSm,
+                    styles.closedSessionReopenLabel,
+                    closedReopening ? styles.closedSessionReopenLabelBusy : null,
+                  ]}
+                >
+                  {closedReopening
+                    ? t('session.closedBannerReopening')
+                    : t('session.closedBannerReopen')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           {/* 已选素材停在输入框正上方：发送前随时可删，发送成功才清空。 */}
           <AttachmentChips
             assets={pendingAssets}
@@ -4883,6 +4984,42 @@ const styles = StyleSheet.create({
   tuiSharedNoticeDismiss: {
     opacity: 0.7,
     paddingHorizontal: 4,
+  },
+  // 已关闭会话横幅(见 isClosedPhoneSession):同 TUI 提示条的低横幅形态,
+  // 右侧「重新打开」动作按钮。
+  closedSessionBannerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginHorizontal: 12,
+    marginBottom: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(128,128,128,0.14)',
+  },
+  closedSessionBannerTextWrap: {
+    flex: 1,
+    gap: 2,
+  },
+  closedSessionBannerTitle: {
+    fontWeight: '600',
+    opacity: 0.9,
+  },
+  closedSessionBannerError: {
+    opacity: 0.75,
+  },
+  closedSessionReopenButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  closedSessionReopenLabel: {
+    fontWeight: '600',
+  },
+  closedSessionReopenLabelBusy: {
+    opacity: 0.5,
   },
   // Small circular "jump to latest" control; the scrubber layer positions it
   // under the locator rail (belowRailSlot owns the geometry).

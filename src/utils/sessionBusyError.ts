@@ -15,12 +15,23 @@ import { ApiTimeoutError, ApiResponseError } from '../api/client';
  * 命中返回 busy 类型；null 表示不属于「会话忙」家族，调用方应回退到既有文案
  * （interruptFailedPrefix 横幅 / failed 气泡），行为保持不变。
  */
-export type SessionBusyKind = 'session_busy' | 'tui_busy' | 'session_not_running';
+export type SessionBusyKind =
+  | 'session_busy'
+  | 'tui_busy'
+  | 'session_not_running'
+  | 'session_closed';
 
 const SESSION_BUSY_CODE = 'ai_session_busy';
 const TUI_BUSY_CODE = 'tui_busy';
 /** 空闲会话插话被拒（服务端 steer 路由 409：session.status !== 'running'）。 */
 const SESSION_NOT_RUNNING_CODE = 'ai_session_not_running';
+/**
+ * 用户主动关闭的会话发消息被拒（服务端 send/lifecycle 路由 409：
+ * session_closed）。注意 imported（ai_import_ 前缀）与 server 侧放行的
+ * local-/dashboard 会话不会得到这个码——发消息即静默 resume——所以命中它
+ * 就意味着「会话真被关了」，必须给出可见反馈。
+ */
+const SESSION_CLOSED_CODE = 'session_closed';
 
 // message 关键字兜底（统一小写比较）：服务端把 code 当文本下发；agent 的英文
 // 原文（"TUI session is running an active turn in its terminal; retry after it
@@ -52,11 +63,13 @@ export const classifySessionBusyError = (
   if (code === TUI_BUSY_CODE) return 'tui_busy';
   if (code === SESSION_BUSY_CODE) return 'session_busy';
   if (code === SESSION_NOT_RUNNING_CODE) return 'session_not_running';
+  if (code === SESSION_CLOSED_CODE) return 'session_closed';
   const haystack = message.toLowerCase();
   // not_running 必须先于 busy 关键字兜底（两者 message 形态相近）。
   if (matchesAny(haystack, [SESSION_NOT_RUNNING_CODE])) {
     return 'session_not_running';
   }
+  if (matchesAny(haystack, [SESSION_CLOSED_CODE])) return 'session_closed';
   if (matchesAny(haystack, TUI_BUSY_MESSAGE_HINTS)) return 'tui_busy';
   if (matchesAny(haystack, SESSION_BUSY_MESSAGE_HINTS)) return 'session_busy';
   return null;
@@ -76,6 +89,7 @@ export const sessionBusyErrorText = (
   if (kind === 'session_not_running') {
     return t('session.error.steerNotRunning');
   }
+  if (kind === 'session_closed') return t('session.error.sessionClosed');
   return null;
 };
 
@@ -92,7 +106,9 @@ const SEND_FAILURE_CODE_KEYS: Readonly<Record<string, string>> = {
   ai_control_disabled: 'session.error.sendAiControlDisabled',
   device_not_found: 'session.error.sendTargetNotFound',
   project_not_found: 'session.error.sendTargetNotFound',
-  session_closed: 'session.error.sendTargetNotFound',
+  // 会话被用户主动关闭：sendTargetNotFound（设备/项目不存在）文不对题，
+  // 走专用「会话已关闭」文案（2026-11-22 agentcore 发送静默失败 RCA）。
+  session_closed: 'session.error.sessionClosed',
   validation_error: 'session.error.sendRejected',
   unsupported_ai_provider: 'session.error.sendRejected',
   idempotency_key_reused: 'session.error.sendRejected',

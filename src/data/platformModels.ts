@@ -541,6 +541,14 @@ export interface VibeCodingRun {
    */
   origin?: 'phone' | 'tui' | 'dashboard' | 'managed';
   /**
+   * 服务端原始 status（wire 原值：'creating'|'active'|'idle'|'running'|
+   * 'paused'|'closed'|'error'）。mapSessionStatus 把 closed 归一化成
+   * completed——列表排序/假完成守卫依赖这条语义，不能改——所以聊天页需要
+   * 区分「用户主动关闭的会话」（顶横幅 + composer 只读）时读这里，别去猜
+   * completed。undefined = 老快照/未知，UI 按「未关闭」处理。
+   */
+  rawStatus?: string;
+  /**
    * Typed detail-loading state for this session — the canonical replacement
    * for the legacy `detailLoadedAt` timestamp. `undefined` = never fetched
    * (the run only has list-snapshot metadata). Resolved by the session-detail

@@ -1279,6 +1279,57 @@ describe('serverAiSessionToVibeRun detailRefreshStatus 映射(C4:粘性诊断不
   });
 });
 
+describe('rawStatus 原始状态旁路(2026-11-22 closed 发送静默失败 RCA)', () => {
+  const makeSnapshot = (over: Record<string, unknown>) =>
+    ({
+      kind: 'ai',
+      user_id: 'u1',
+      device_id: 'd1',
+      status: 'running',
+      mode: 'chat',
+      session_id: 's1',
+      created_at: '2026-01-01T00:00:00Z',
+      last_active_at: '2026-01-01T00:00:00Z',
+      ...over,
+    }) as unknown as Parameters<typeof serverAiSessionToVibeRun>[0];
+
+  it('closed 会话:列表语义不变(status 仍归一化成 completed),rawStatus 保存原值', () => {
+    const run = serverAiSessionToVibeRun(
+      makeSnapshot({ status: 'closed' }),
+      [],
+      [],
+    );
+    // mapSessionStatus 的 closed→completed 是列表/假完成守卫的承重墙,不许改。
+    expect(run.status).toBe('completed');
+    expect(run.rawStatus).toBe('closed');
+  });
+
+  it('其他状态照常透传原值', () => {
+    expect(
+      serverAiSessionToVibeRun(makeSnapshot({ status: 'idle' }), [], []).rawStatus,
+    ).toBe('idle');
+    expect(
+      serverAiSessionToVibeRun(makeSnapshot({ status: 'active' }), [], []).rawStatus,
+    ).toBe('active');
+  });
+
+  it('不带 rawStatus 的部分快照(列表/重命名/打断响应)经 merge 不把已知值抹成 undefined', () => {
+    const detailed = serverAiSessionToVibeRun(
+      makeSnapshot({ status: 'closed' }),
+      [],
+      [],
+    );
+    // 模拟「快照缺键」的 incoming:映射层理论上恒置该键,这里防御性断言
+    // merge 守卫(同 attachmentsCapability 先例)确实保住已知值。
+    const stripped = { ...detailed, rawStatus: undefined };
+    const merged = mergeVibeRunSnapshot(
+      detailed,
+      stripped as unknown as VibeCodingRun,
+    );
+    expect(merged.rawStatus).toBe('closed');
+  });
+});
+
 describe('mergeAgentMessages — 心跳快照对象身份(2026-10-26 卡顿审计)', () => {
   // agentTranscript 的 WeakMap 段落解析缓存按对象身份命中。旧规则只护
   // 「current 更长」,等长内容也换新对象 → 每个 10s 心跳拍 / 每 100ms 流式

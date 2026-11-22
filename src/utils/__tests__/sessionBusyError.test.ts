@@ -50,6 +50,17 @@ describe('classifySessionBusyError', () => {
     expect(classifySessionBusyError(undefined)).toBeNull();
   });
 
+  it('已关闭会话发消息被拒:code=session_closed → session_closed', () => {
+    const error = withCode('session_closed', 'session_closed');
+    expect(classifySessionBusyError(error)).toBe('session_closed');
+  });
+
+  it('无 code 时按 message 关键字兜底识别 session_closed', () => {
+    expect(classifySessionBusyError(new Error('session_closed'))).toBe(
+      'session_closed',
+    );
+  });
+
   it('code 与 message 冲突时 code 优先(tui_busy 胜过 busy 文本)', () => {
     const error = withCode('ai_session_busy', 'tui_busy');
     expect(classifySessionBusyError(error)).toBe('tui_busy');
@@ -75,6 +86,12 @@ describe('sessionBusyErrorText', () => {
   it('非忙类错误返回 null(调用方走既有文案)', () => {
     expect(sessionBusyErrorText(new Error('Timed out after 8000ms'), t)).toBeNull();
   });
+
+  it('session_closed → session.error.sessionClosed(专用文案,不复用 sendTargetNotFound)', () => {
+    expect(
+      sessionBusyErrorText(withCode('session_closed', 'session_closed'), t),
+    ).toBe('session.error.sessionClosed');
+  });
 });
 
 describe('i18n 资源(vibecoding:session.error.*)', () => {
@@ -87,6 +104,25 @@ describe('i18n 资源(vibecoding:session.error.*)', () => {
       expect(locale.session.error.sessionBusy.length).toBeGreaterThan(0);
       expect(typeof locale.session.error.sessionBusyTui).toBe('string');
       expect(locale.session.error.sessionBusyTui.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('zh+en 都提供 sessionClosed 文案 + 关闭横幅/重开/composer 只读键,且非空', () => {
+    for (const locale of [en, zh]) {
+      expect(typeof locale.session.error.sessionClosed).toBe('string');
+      expect(locale.session.error.sessionClosed.length).toBeGreaterThan(0);
+      expect(typeof locale.session.composer.sessionClosedReadOnly).toBe('string');
+      expect(locale.session.composer.sessionClosedReadOnly.length).toBeGreaterThan(0);
+      for (const key of [
+        'closedBanner',
+        'closedBannerReopen',
+        'closedBannerReopening',
+        'closedBannerReopenLifecycle',
+        'closedBannerReopenFailed',
+      ]) {
+        expect(typeof locale.session[key]).toBe('string');
+        expect(locale.session[key].length).toBeGreaterThan(0);
+      }
     }
   });
 });
@@ -143,6 +179,11 @@ describe('sendFailureText', () => {
   it('403 ai_control_disabled → sendAiControlDisabled(403 不误判为登录过期)', () => {
     const err = new ApiResponseError('ai_control_disabled', 403, 'ai_control_disabled');
     expect(sendFailureText(err, tp)).toBe('session.error.sendAiControlDisabled');
+  });
+
+  it('409 session_closed → sessionClosed(草稿首条路径也不再借用 sendTargetNotFound)', () => {
+    const err = new ApiResponseError('session_closed', 409, 'session_closed');
+    expect(sendFailureText(err, tp)).toBe('session.error.sessionClosed');
   });
 
   it('401 → sendUnauthorized', () => {

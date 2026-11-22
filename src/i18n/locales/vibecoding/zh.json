@@ -495,6 +495,7 @@
       "steerNotRunning": "当前没有进行中的回合，无法插话。等回合开始后再试，或直接作为新消息发送。",
       "sessionBusy": "该会话正在运行一个回合，请稍后再试。",
       "sessionBusyTui": "该会话由桌面终端（TUI）驱动，终端里正在运行一个回合。请稍后再试，或在终端中按一次 Esc 停止本轮。",
+      "sessionClosed": "会话已关闭，无法继续发送。点上方「重新打开」可恢复对话。",
       "sessionFailed": "会话失败",
       "sessionFailedGateway": "会话失败 · 网关 {{status}}",
       "sessionFailedGatewayRetry": "会话失败 · 网关 {{status}}（重试 {{attempt}}/{{max}}）",
@@ -519,7 +520,8 @@
       "tuiStopGreyed": "本回合正跑在桌面终端里——可以直接点停止键结束本轮；回合结束后即可继续对话。",
       "tuiSteerableHint": "本回合正跑在桌面终端里——可以直接插话（排队接续），也可以点停止键结束本轮。",
       "tuiRunningReadOnly": "本回合正跑在桌面终端里，等回合结束后再继续输入。",
-      "approvalPendingReadOnly": "有一条审批在等你处理，审批后即可继续对话。"
+      "approvalPendingReadOnly": "有一条审批在等你处理，审批后即可继续对话。",
+      "sessionClosedReadOnly": "此会话已关闭，重新打开后可继续对话。"
     },
     "approval": {
       "requestLabel": "APPROVAL REQUEST",
@@ -602,6 +604,11 @@
     },
     "tuiSharedNotice": "该对话与桌面终端(TUI)共用:手机上的对话会自动同步进开着此会话的空闲终端;终端忙时本轮不注入、不补发。",
     "tuiSharedNoticeDismiss": "知道了",
+    "closedBanner": "此会话已关闭",
+    "closedBannerReopen": "重新打开",
+    "closedBannerReopening": "重新打开中…",
+    "closedBannerReopenLifecycle": "该会话正被系统运行状态接管，暂时无法重新打开，请稍后重试。",
+    "closedBannerReopenFailed": "重新打开失败：{{detail}}",
     "diagnostics": {
       "title": "运行诊断",
       "entryA11y": "打开运行诊断",

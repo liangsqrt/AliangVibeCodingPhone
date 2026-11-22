@@ -495,6 +495,7 @@
       "steerNotRunning": "No turn is running in this session, so it cannot be steered. Start a turn first, or send it as a new message.",
       "sessionBusy": "A turn is already running in this session. Try again shortly.",
       "sessionBusyTui": "This session is driven by the desktop terminal (TUI), where a turn is currently running. Try again shortly, or press Esc once in that terminal to stop the turn.",
+      "sessionClosed": "This session is closed and can no longer accept messages. Tap Reopen above to continue the conversation.",
       "sessionFailed": "Conversation failed",
       "sessionFailedGateway": "Conversation failed · gateway {{status}}",
       "sessionFailedGatewayRetry": "Conversation failed · gateway {{status}} (retry {{attempt}}/{{max}})",
@@ -519,7 +520,8 @@
       "tuiStopGreyed": "This turn is running in the desktop terminal — tap stop to end it; keep chatting once it finishes.",
       "tuiSteerableHint": "This turn is running in the desktop terminal — your message will queue as a steer, or tap stop to end it.",
       "tuiRunningReadOnly": "This turn is running in the desktop terminal — you can continue once it finishes.",
-      "approvalPendingReadOnly": "An approval is waiting for you — you can continue once it's resolved."
+      "approvalPendingReadOnly": "An approval is waiting for you — you can continue once it's resolved.",
+      "sessionClosedReadOnly": "This session is closed — reopen it to continue the conversation."
     },
     "approval": {
       "requestLabel": "APPROVAL REQUEST",
@@ -602,6 +604,11 @@
     },
     "tuiSharedNotice": "Shared with a terminal TUI — messages sent from the phone are automatically synced into an idle terminal running this session. While the terminal is busy, the notice is skipped (not retried).",
     "tuiSharedNoticeDismiss": "Got it",
+    "closedBanner": "This session is closed",
+    "closedBannerReopen": "Reopen",
+    "closedBannerReopening": "Reopening…",
+    "closedBannerReopenLifecycle": "This session is currently owned by a system run state and can't be reopened right now. Try again later.",
+    "closedBannerReopenFailed": "Reopen failed: {{detail}}",
     "diagnostics": {
       "title": "Run diagnostics",
       "entryA11y": "Open run diagnostics",
