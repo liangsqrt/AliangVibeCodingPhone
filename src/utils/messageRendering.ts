@@ -593,7 +593,84 @@ const replaceAliangOptionsFences = (rawContent: string) => {
     (_match, body) =>
       approvalRequestTag(formatAliangOptionsFence(String(body ?? ''))),
   );
-  return replaceBareOptionJson(content);
+  return replaceBareOptionJson(replaceTruncatedOptionFence(content));
+};
+
+// --- Truncated aliang-options fence tolerance --------------------------------
+// 传输层限幅（agent 侧 agentVibeTranscriptMaxContentRunes）把消息尾部切掉时，
+// 围栏开标签还在、闭合 ``` 没了——主正则与裸 JSON 配平扫描双双失效，残块被
+// markdown 当未闭合代码块原样外晒（2026-11-25 local-mwl6wqyvv5ysrg 手机端
+// 选项卡消失事故：4565 rune 消息、围栏位于 3490，4000 截断点切在 JSON 中
+// 间）。与 server 侧 extractUnclosedAgentAIOptionBlocks 保持同一判定（开标签
+// 之后不再出现闭合行才算截断形态；两处为镜像实现，改一处须同步另一处）：
+// JSON 尚完整时照样转卡（旧路径只换 JSON 本体、悬空开标签残留），截不出
+// 配平前缀则整体吞掉残块——宁可不渲染，不外晒半截 JSON。
+
+const OPTION_FENCE_OPEN_TAG = '```aliang-options';
+
+/** 与 server aliangOptionsBalancedJSONPrefix 镜像：从首个 { 起做字符串感知
+ * 的配平扫描，返回首个完整 JSON 对象文本；截不出返回 undefined。 */
+const balancedJSONObjectPrefix = (body: string): string | undefined => {
+  const start = body.indexOf('{');
+  if (start < 0) return undefined;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < body.length; index += 1) {
+    const ch = body[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === '\\') {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+    } else if (ch === '{') {
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return body.slice(start, index + 1);
+      }
+    }
+  }
+  return undefined;
+};
+
+/** 截断围栏兜底：开标签之后没有闭合行时，开标签到文末都是残块——配平前缀
+ * 截得出选项形状就转 approval 卡（闭合 ``` 被切、JSON 尚完整的形态），
+ * 否则整体吞掉（JSON 被切一半的形态），不让残块流进 markdown 管线。 */
+const replaceTruncatedOptionFence = (content: string) => {
+  let openIdx = content.indexOf(OPTION_FENCE_OPEN_TAG);
+  while (openIdx >= 0) {
+    const afterOpen = openIdx + OPTION_FENCE_OPEN_TAG.length;
+    if (content.includes('\n```', afterOpen)) {
+      // 该开标签有闭合行（完整围栏，主正则已处理）——镜像 server 的逐个
+      // 判定继续找下一个；截断形态只可能出现在尾部。
+      openIdx = content.indexOf(OPTION_FENCE_OPEN_TAG, afterOpen);
+      continue;
+    }
+    const json = balancedJSONObjectPrefix(content.slice(afterOpen));
+    if (json !== undefined) {
+      try {
+        if (isOptionRequestShape(JSON.parse(json))) {
+          return (
+            content.slice(0, openIdx) +
+            approvalRequestTag(formatAliangOptionsFence(json))
+          );
+        }
+      } catch {
+        // 坏 JSON：落到吞残块。
+      }
+    }
+    return content.slice(0, openIdx);
+  }
+  return content;
 };
 
 // --- Fence-tolerant aliang-options fallback ---------------------------------
