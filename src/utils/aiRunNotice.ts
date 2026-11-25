@@ -3,11 +3,15 @@
  *
  * agent 在续聊降级时发的信息性帧（回合照常继续）：resume_missing = 绑定的
  * 原生 CLI 会话不存在（空起）；history_restore_failed = journal 历史读回
- * 失败（空会话继续）。未知 code 返回 null——调用方整条丢弃（前向兼容：
- * agent 以后加新 code，旧 App 不弹野文案）。
+ * 失败（空会话继续）；fork_fallback_fresh = codex 线程锁 fork 也被拒后的
+ * 压平历史兜底（2026-11-25 线程 busy 询问）。未知 code 返回 null——调用方
+ * 整条丢弃（前向兼容：agent 以后加新 code，旧 App 不弹野文案）。
  */
 
-export type AiRunNoticeCode = 'resume_missing' | 'history_restore_failed';
+export type AiRunNoticeCode =
+  | 'resume_missing'
+  | 'history_restore_failed'
+  | 'fork_fallback_fresh';
 
 export interface AiRunNoticeCopy {
   code: AiRunNoticeCode;
@@ -20,6 +24,7 @@ export interface AiRunNoticeCopy {
 const NOTICE_TEXT_KEYS: Record<AiRunNoticeCode, string> = {
   resume_missing: 'session.notice.resumeMissing',
   history_restore_failed: 'session.notice.historyRestoreFailed',
+  fork_fallback_fresh: 'session.notice.forkFallbackFresh',
 };
 
 export function mapAiRunNotice(
@@ -28,7 +33,8 @@ export function mapAiRunNotice(
 ): AiRunNoticeCopy | null {
   if (
     code !== 'resume_missing' &&
-    code !== 'history_restore_failed'
+    code !== 'history_restore_failed' &&
+    code !== 'fork_fallback_fresh'
   ) {
     return null;
   }

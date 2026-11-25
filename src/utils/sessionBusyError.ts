@@ -19,7 +19,8 @@ export type SessionBusyKind =
   | 'session_busy'
   | 'tui_busy'
   | 'session_not_running'
-  | 'session_closed';
+  | 'session_closed'
+  | 'codex_thread_busy';
 
 const SESSION_BUSY_CODE = 'ai_session_busy';
 const TUI_BUSY_CODE = 'tui_busy';
@@ -32,6 +33,14 @@ const SESSION_NOT_RUNNING_CODE = 'ai_session_not_running';
  * 就意味着「会话真被关了」，必须给出可见反馈。
  */
 const SESSION_CLOSED_CODE = 'session_closed';
+/**
+ * codex 线程单写者冲突（2026-11-25 P0：内核 agentAIErrorPayload 的
+ * error_code 通道 + 特征文本 "codex thread busy: ..."；原始 codex 错误为
+ * "thread-store conflict: ... already has an active writer"）。语义与
+ * tui_busy 同族——原会话在别的客户端里开着——但文案指引不同（关闭原
+ * 客户端后重试，或答「复制会话继续」的询问卡）。
+ */
+const CODEX_THREAD_BUSY_CODE = 'codex_thread_busy';
 
 // message 关键字兜底（统一小写比较）：服务端把 code 当文本下发；agent 的英文
 // 原文（"TUI session is running an active turn in its terminal; retry after it
@@ -42,6 +51,12 @@ const TUI_BUSY_MESSAGE_HINTS = [
   TUI_BUSY_CODE,
   'running an active turn',
   'active turn in its terminal',
+];
+const CODEX_THREAD_BUSY_MESSAGE_HINTS = [
+  CODEX_THREAD_BUSY_CODE,
+  'codex thread busy',
+  'already has an active writer',
+  'thread-store conflict',
 ];
 
 const errorParts = (error: unknown): { code?: string; message: string } => {
@@ -64,12 +79,15 @@ export const classifySessionBusyError = (
   if (code === SESSION_BUSY_CODE) return 'session_busy';
   if (code === SESSION_NOT_RUNNING_CODE) return 'session_not_running';
   if (code === SESSION_CLOSED_CODE) return 'session_closed';
+  if (code === CODEX_THREAD_BUSY_CODE) return 'codex_thread_busy';
   const haystack = message.toLowerCase();
   // not_running 必须先于 busy 关键字兜底（两者 message 形态相近）。
   if (matchesAny(haystack, [SESSION_NOT_RUNNING_CODE])) {
     return 'session_not_running';
   }
   if (matchesAny(haystack, [SESSION_CLOSED_CODE])) return 'session_closed';
+  // codex 线程锁先于 tui_busy：内核特征文本含 "thread busy"，语义更具体。
+  if (matchesAny(haystack, CODEX_THREAD_BUSY_MESSAGE_HINTS)) return 'codex_thread_busy';
   if (matchesAny(haystack, TUI_BUSY_MESSAGE_HINTS)) return 'tui_busy';
   if (matchesAny(haystack, SESSION_BUSY_MESSAGE_HINTS)) return 'session_busy';
   return null;
@@ -85,6 +103,7 @@ export const sessionBusyErrorText = (
 ): string | null => {
   const kind = classifySessionBusyError(error);
   if (kind === 'tui_busy') return t('session.error.sessionBusyTui');
+  if (kind === 'codex_thread_busy') return t('session.error.sessionBusyCodexThread');
   if (kind === 'session_busy') return t('session.error.sessionBusy');
   if (kind === 'session_not_running') {
     return t('session.error.steerNotRunning');

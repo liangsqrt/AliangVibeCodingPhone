@@ -495,6 +495,7 @@
       "steerNotRunning": "当前没有进行中的回合，无法插话。等回合开始后再试，或直接作为新消息发送。",
       "sessionBusy": "该会话正在运行一个回合，请稍后再试。",
       "sessionBusyTui": "该会话由桌面终端（TUI）驱动，终端里正在运行一个回合。请稍后再试，或在终端中按一次 Esc 停止本轮。",
+      "sessionBusyCodexThread": "原会话仍在其他 Codex 客户端（如 VS Code）中打开，无法直接续聊。关闭原会话后重新发送即可；或在询问卡上选择「复制会话继续」。",
       "sessionClosed": "会话已关闭，无法继续发送。点上方「重新打开」可恢复对话。",
       "sessionFailed": "会话失败",
       "sessionFailedGateway": "会话失败 · 网关 {{status}}",
@@ -575,7 +576,8 @@
     },
     "notice": {
       "resumeMissing": "原生会话不存在，已按新会话继续",
-      "historyRestoreFailed": "历史恢复失败，已按空会话继续"
+      "historyRestoreFailed": "历史恢复失败，已按空会话继续",
+      "forkFallbackFresh": "原会话被占用，已按复制历史开启新对话继续"
     },
     "offline": {
       "title": "设备离线 · 只读模式",

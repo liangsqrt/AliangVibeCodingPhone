@@ -495,6 +495,7 @@
       "steerNotRunning": "No turn is running in this session, so it cannot be steered. Start a turn first, or send it as a new message.",
       "sessionBusy": "A turn is already running in this session. Try again shortly.",
       "sessionBusyTui": "This session is driven by the desktop terminal (TUI), where a turn is currently running. Try again shortly, or press Esc once in that terminal to stop the turn.",
+      "sessionBusyCodexThread": "This conversation is still open in another Codex client (e.g. VS Code) and cannot be resumed here. Close that client and resend; or pick \"Fork and continue\" on the question card.",
       "sessionClosed": "This session is closed and can no longer accept messages. Tap Reopen above to continue the conversation.",
       "sessionFailed": "Conversation failed",
       "sessionFailedGateway": "Conversation failed · gateway {{status}}",
@@ -575,7 +576,8 @@
     },
     "notice": {
       "resumeMissing": "Native session not found; continuing as a new conversation",
-      "historyRestoreFailed": "Failed to restore history; continuing with an empty conversation"
+      "historyRestoreFailed": "Failed to restore history; continuing with an empty conversation",
+      "forkFallbackFresh": "Native thread busy; fork unavailable, continuing with a copied-history new conversation"
     },
     "offline": {
       "title": "Device offline · read-only",

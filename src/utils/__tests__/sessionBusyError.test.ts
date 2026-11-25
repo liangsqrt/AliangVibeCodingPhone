@@ -94,16 +94,49 @@ describe('sessionBusyErrorText', () => {
   });
 });
 
+
+describe('codex 线程单写者冲突（2026-11-25 P0）', () => {
+  const VERBATIM =
+    'codex thread busy: codex thread 01a2 is open in another Codex client (VS Code/terminal) and cannot be resumed here (user chose close-and-retry); close that client and resend';
+  const RAW_CODEX =
+    'Codex app-server thread/resume failed: thread 01a2 already has an active writer (-32600)';
+
+  it('error_code=codex_thread_busy 优先 → codex_thread_busy', () => {
+    expect(classifySessionBusyError(withCode(VERBATIM, 'codex_thread_busy'))).toBe('codex_thread_busy');
+  });
+
+  it('无 code 时按特征文本兜底（内核 ai.error 通道只有字符串）', () => {
+    expect(classifySessionBusyError(new Error(VERBATIM))).toBe('codex_thread_busy');
+  });
+
+  it('旧 App 收到未升级内核的原始 codex 错误也能兜底识别', () => {
+    expect(classifySessionBusyError(new Error(RAW_CODEX))).toBe('codex_thread_busy');
+  });
+
+  it('-32600 干扰项不得误报(no rollout found / missing field)', () => {
+    expect(classifySessionBusyError(new Error('no rollout found for thread id 01a2'))).toBeNull();
+    expect(classifySessionBusyError(new Error('Invalid request: missing field `threadId`'))).toBeNull();
+  });
+
+  it('sessionBusyErrorText → session.error.sessionBusyCodexThread', () => {
+    expect(sessionBusyErrorText(withCode(VERBATIM, 'codex_thread_busy'), t)).toBe(
+      'session.error.sessionBusyCodexThread',
+    );
+  });
+});
+
 describe('i18n 资源(vibecoding:session.error.*)', () => {
   const en = require('../../i18n/locales/vibecoding/en.json');
   const zh = require('../../i18n/locales/vibecoding/zh.json');
 
-  it('zh+en 都提供 sessionBusy / sessionBusyTui,且非空', () => {
+  it('zh+en 都提供 sessionBusy / sessionBusyTui / sessionBusyCodexThread,且非空', () => {
     for (const locale of [en, zh]) {
       expect(typeof locale.session.error.sessionBusy).toBe('string');
       expect(locale.session.error.sessionBusy.length).toBeGreaterThan(0);
       expect(typeof locale.session.error.sessionBusyTui).toBe('string');
       expect(locale.session.error.sessionBusyTui.length).toBeGreaterThan(0);
+      expect(typeof locale.session.error.sessionBusyCodexThread).toBe('string');
+      expect(locale.session.error.sessionBusyCodexThread.length).toBeGreaterThan(0);
     }
   });
 

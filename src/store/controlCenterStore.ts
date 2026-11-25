@@ -835,9 +835,11 @@ export const useControlCenterStore = create<ControlCenterState>()(
               const friendlyError =
                 busyKind === 'tui_busy'
                   ? i18n.t('vibecoding:session.error.sessionBusyTui')
-                  : busyKind === 'session_busy'
-                    ? i18n.t('vibecoding:session.error.sessionBusy')
-                    : transportEvent.error;
+                  : busyKind === 'codex_thread_busy'
+                    ? i18n.t('vibecoding:session.error.sessionBusyCodexThread')
+                    : busyKind === 'session_busy'
+                      ? i18n.t('vibecoding:session.error.sessionBusy')
+                      : transportEvent.error;
               set(state => {
                 const run = state.vibeRuns.find(
                   item => item.id === transportEvent.sessionId,
