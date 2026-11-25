@@ -608,6 +608,14 @@ const replaceAliangOptionsFences = (rawContent: string) => {
 
 const OPTION_FENCE_OPEN_TAG = '```aliang-options';
 
+/** 真实围栏的 tag 行纯度锚定:tag 之后只允许水平空白收行,下一行以 { 开头
+ * (system prompt 约定 the tag line contains ONLY the tag)。散文「内联提及
+ * 标签+同行还有正文」与「tag 行后跟非 JSON 正文」都不满足——对抗评审坐实
+ * 无锚定时这两类会被当截断残块,吞掉消息尾部或改写成脱离上下文的卡。事故
+ * 形态「拍板：```aliang-options\n{」标签虽黏在问句行尾,tag 之后仍满足本
+ * 锚定,不受影响。 */
+const TRUNCATED_FENCE_BODY_RE = /^[ \t]*\r?\n[ \t]*\{/;
+
 /** 与 server aliangOptionsBalancedJSONPrefix 镜像：从首个 { 起做字符串感知
  * 的配平扫描，返回首个完整 JSON 对象文本；截不出返回 undefined。 */
 const balancedJSONObjectPrefix = (body: string): string | undefined => {
@@ -652,6 +660,12 @@ const replaceTruncatedOptionFence = (content: string) => {
     if (content.includes('\n```', afterOpen)) {
       // 该开标签有闭合行（完整围栏，主正则已处理）——镜像 server 的逐个
       // 判定继续找下一个；截断形态只可能出现在尾部。
+      openIdx = content.indexOf(OPTION_FENCE_OPEN_TAG, afterOpen);
+      continue;
+    }
+    if (!TRUNCATED_FENCE_BODY_RE.test(content.slice(afterOpen))) {
+      // tag 行不纯(同行还有正文/下一行不是 JSON):不是围栏,是散文提及——
+      // 原样保留,继续找下一个开标签。
       openIdx = content.indexOf(OPTION_FENCE_OPEN_TAG, afterOpen);
       continue;
     }

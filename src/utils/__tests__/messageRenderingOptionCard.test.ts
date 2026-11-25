@@ -235,3 +235,65 @@ describe('messageRendering — 截断围栏容忍(传输限幅切尾)', () => {
     expect(text).not.toContain('{"foo"');
   });
 });
+
+describe('messageRendering — 截断围栏容忍的误伤面(行首纯度锚定)', () => {
+  // 对抗评审坐实(2026-11-25):无锚定时,散文内联提及 ```aliang-options 且
+  // 其后无代码围栏 → 消息尾部被静默吞掉(修复前整条正常渲染,属本分支引入
+  // 的回归);提及标签+其后有选项形状 JSON → 中间解释文字被删+JSON 被改写
+  // 成脱离上下文的卡。真实围栏按约定 tag 行只含 tag(其后紧跟换行+{),
+  // 以此锚定消掉误伤面;事故形态「拍板：```aliang-options\n{」仍须命中。
+  const noApprovalCard = (content: string) => {
+    const segments = parseMessageContentSegments('m1', content);
+    return {
+      approvals: segments.filter(
+        (segment): segment is TranscriptCalloutSegment =>
+          segment.kind === 'callout' && segment.variant === 'approval',
+      ),
+      text: segments
+        .filter(segment => segment.kind === 'text')
+        .map(segment => segment.content)
+        .join('\n'),
+    };
+  };
+
+  it('散文内联提及标签(同行还有正文):不吞尾部,原样渲染', () => {
+    const prose =
+      '说明:模型会写成 ```aliang-options 围栏,然后手机解析成卡片。这是后半句,必须保留。';
+    const { approvals, text } = noApprovalCard(prose);
+    expect(approvals).toHaveLength(0);
+    expect(text).toContain('这是后半句,必须保留');
+    expect(text).toContain('围栏,然后手机解析成卡片');
+  });
+
+  it('内联提及标签+其后有选项形状 JSON:解释文字不删(裸 JSON 兜底转卡属既有设计)', () => {
+    const json = JSON.stringify({
+      v: 2,
+      title: '示例',
+      options: [{ id: 'demo', label: '示例选项' }],
+    });
+    const prose =
+      '讨论格式时粘贴示例:提到 ```aliang-options 围栏写法,示例 JSON 如下 ' +
+      json +
+      ' 注意这只是文档说明。';
+    const { text } = noApprovalCard(prose);
+    // 评审 caveat:粘贴的完整选项 JSON 经既有 replaceBareOptionJson 转卡是
+    // 丢围栏裸 JSON 容错的既定行为(2026-11 aliopts 批),非本分支回归;
+    // 本分支的契约是——围栏提及点不吞标签之后的解释文字。
+    expect(text).toContain('围栏写法,示例 JSON 如下');
+    expect(text).toContain('注意这只是文档说明');
+  });
+
+  it('行首提及标签但同行跟正文:不吞不转卡', () => {
+    const prose = '前置说明。\n```aliang-options 是一种围栏格式说明文字,尾部保留。';
+    const { approvals, text } = noApprovalCard(prose);
+    expect(approvals).toHaveLength(0);
+    expect(text).toContain('尾部保留');
+  });
+
+  it('tag 行后换行接非 { 开头正文:不当作截断围栏', () => {
+    const prose = '说明如下:\n```aliang-options\n这里不是 JSON,只是没闭合的引用。尾部保留。';
+    const { approvals, text } = noApprovalCard(prose);
+    expect(approvals).toHaveLength(0);
+    expect(text).toContain('尾部保留');
+  });
+});
