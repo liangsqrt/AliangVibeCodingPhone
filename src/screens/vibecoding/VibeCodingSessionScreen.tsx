@@ -867,21 +867,21 @@ export const VibeCodingSessionScreen: React.FC = () => {
     state => state.clear,
   );
   const showToast = useToastStore(state => state.show);
-  // 素材能力位（草稿态）：服务端没配 COS 时 `enabled === false`。会话级能力位只在
-  // 单会话详情 / WS ai.session.updated 帧里下发，列表快照没有这个键 —— 所以草稿
-  // （首条消息前）用「任意已知会话的能力位」做忠实代理，代理也没有时回退部署级
+  // 素材能力位代理链：会话级能力位只在单会话详情 / WS ai.session.updated 帧里
+  // 下发，列表快照没有这个键 —— 草稿态（draftRun 伪会话）与刚从列表点开、详情
+  // 未回的会话，自身位都是 undefined。此时按「同设备会话 → 任意会话 → 部署级
   // platformFeatures.attachmentsCapability（mobile snapshot features.attachments，
-  // 服务端专为草稿入口下发；零详情缓存的新装用户靠它可见，2026-11-25 接线）。
-  // 能力位未知（连部署级位都没有，旧 server / 未同步）按不可用处理——不让用户
-  // 点进一条注定失败的链路。
+  // 服务端专为无位场景下发）」代理；连代理都没有（旧 server / 未同步）保持
+  // undefined = 不可见，不让用户点进一条注定失败的链路。
   const draftAttachmentsCapability = useControlCenterStore(state =>
     selectDraftAttachmentsCapability(state, draftConfig),
   );
   // 服务端下发的单条消息素材上限；能力位未知时按 1 兜底（宁少勿多）。
-  // 已有会话只信自己的位；草稿（尚无会话）用代理/部署级位的上限。
+  // 已有会话只信自己的位；草稿/伪会话（isDraft 含 draftRun 占位的 session 非空态）
+  // 用代理/部署级位的上限。
   const attachmentMaxPerMessage =
     session?.attachmentsCapability?.max_per_message ??
-    (session == null ? draftAttachmentsCapability?.max_per_message : undefined) ??
+    (isDraft ? draftAttachmentsCapability?.max_per_message : undefined) ??
     1;
 
   const handleOpenAttachments = useCallback(() => {
@@ -986,16 +986,18 @@ export const VibeCodingSessionScreen: React.FC = () => {
     void clearAttachmentLibrary();
   }, [clearAttachmentLibrary]);
 
-  // 入口可用性：goal 会话走 queueGoalMessage，没有素材通道。草稿态的代理/部署级
-  // 回退见上方 selectDraftAttachmentsCapability —— 草稿曾经一票否决（「没有
-  // sessionId 上传无处可去」），后经「任意会话能力位代理」放开，但仍要求用户
-  // 点开过至少一次会话详情；2026-11-25 起补上部署级兜底，素材本身在挑选时只是
-  // 本地 LocalAsset，上传发生在发送时——草稿发送路径已补上「会话落地后立刻
-  // 补发素材消息」（见 appendUserMessage 草稿分支）。
+  // 入口可用性：goal 会话/goal 草稿模式走 queueGoalMessage，没有素材通道，一票
+  // 否决。其余场景「自身位明确 false 才隐藏，未知(undefined)落到代理/部署级链」
+  // ——2026-11-25 修复：旧公式按 `session != null` 分流，而草稿态 session 恒为
+  // draftRun 伪会话（非 null），其身上没有能力位 → 恒走第一分支且恒 false，
+  // 草稿兜底分支是不可达死代码，新建会话首条消息前 + 号永远不出现（真机截图
+  // 实证）。素材本身在挑选时只是本地 LocalAsset，上传发生在发送时——草稿发送
+  // 路径已补上「会话落地后立刻补发素材消息」（见 appendUserMessage 草稿分支）。
   const attachmentsEnabled =
-    session != null
-      ? session.purpose !== 'goal' && session.attachmentsCapability?.enabled === true
-      : isDraft && draftAttachmentsCapability?.enabled === true;
+    session?.purpose === 'goal' || goalDraftActive
+      ? false
+      : (session?.attachmentsCapability?.enabled ??
+          draftAttachmentsCapability?.enabled) === true;
 
   const handleComposerTextInputFocus = useCallback(() => {
     setAutoFocusText(false);

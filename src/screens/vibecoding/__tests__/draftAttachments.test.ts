@@ -20,10 +20,16 @@ const build = (
 });
 
 describe('selectDraftAttachmentsCapability — 草稿素材能力位代理链', () => {
-  test('无 draftConfig（非草稿态）→ undefined，选择器不参与', () => {
-    const state = build([{ deviceId: 'dev-1', attachmentsCapability: cap(true) }], cap(true));
+  test('无 draftConfig（从列表打开的已有会话）→ 部署级位兜底（2026-11-25 伪会话门控回归锚）', () => {
+    const platform = cap(true);
+    const state = build([{ deviceId: 'dev-1', attachmentsCapability: cap(true) }], platform);
+    expect(selectDraftAttachmentsCapability(state, null)).toBe(platform);
+    expect(selectDraftAttachmentsCapability(state, undefined)).toBe(platform);
+  });
+
+  test('无 draftConfig 且部署级位也未知（旧 server）→ undefined 维持 fail-closed', () => {
+    const state = build([{ deviceId: 'dev-1', attachmentsCapability: cap(true) }], undefined);
     expect(selectDraftAttachmentsCapability(state, null)).toBeUndefined();
-    expect(selectDraftAttachmentsCapability(state, undefined)).toBeUndefined();
   });
 
   test('同设备会话的位最忠实 → 直接采用', () => {
