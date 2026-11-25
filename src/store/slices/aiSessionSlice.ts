@@ -237,6 +237,13 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
 
   startAgentSession: async (input) => {
     const provider = providerWireValue(input.provider);
+    // 2026-11-25 线上事故(与服务端 alianggate 联动修复):设备授权目录清单
+    // 为空时,入口层会兜底出字面 '~' 并把它当 project_path 发给 agent——服务
+    // 端曾因此把会话 cwd 打成 "~",整局会话一碰 shell 就死。'~' 不是真实路径:
+    // 在载荷边界按「目录未知」收空串(服务端空 ⇒ 主目录语义),也绝不拿它建
+    // 项目卡。收口在此处而不是各屏幕,避免漏掉任何调用方。
+    const directory =
+      input.directory?.trim() === '~' ? '' : input.directory?.trim() || '';
     // Concrete model name forwarded to the agent CLI as `--model` (e.g.
     // "glm-5.2-xhigh"). Empty/omitted => the CLI's own default model is used.
     // Do NOT send a display label — the gateway forwards `model` verbatim, so a
@@ -252,20 +259,21 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
     if (get().serverMode) {
       try {
         let projectId = input.projectId;
-        if (!projectId) {
+        if (!projectId && directory) {
           // 清单续聊（跨端统一 P4）常以 directory 直呼而不知 projectId：先按
           // 路径+设备找已注册项目，避免每个入口都 clone 一份同路径项目。
+          // directory 未知(空串)时跳过——不能拿空/占位路径建项目卡。
           const existing = get().projects.find(
             project =>
-              sameRemotePath(project.path, input.directory) &&
+              sameRemotePath(project.path, directory) &&
               project.deviceId === input.deviceId,
           );
           projectId =
             existing?.id ??
             (await get().createProject({
               deviceId: input.deviceId,
-              path: input.directory,
-              name: fileNameFromPath(input.directory),
+              path: directory,
+              name: fileNameFromPath(directory),
               description: 'Created from mobile VibeCoding.',
             }));
         }
@@ -282,7 +290,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
           device_id: input.deviceId,
           client_request_id: input.clientRequestId,
           project_id: projectId || undefined,
-          project_path: input.directory,
+          project_path: directory,
           mode: 'vibe',
           ...(input.objective.trim() ? { message: input.objective } : {}),
           ...(input.sourceSessionId?.trim()
@@ -319,7 +327,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
           ...serverAiSessionToVibeRun(session, get().devices, get().projects),
           provider: input.provider,
           projectId,
-          directory: input.directory,
+          directory,
         };
 
         set(state => ({
@@ -334,7 +342,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
               : device
           ),
           events: [
-            event('agent.session.started', 'Agent session started', `${modelLabel} started in ${input.directory}.`, 'running', {
+            event('agent.session.started', 'Agent session started', `${modelLabel} started in ${directory || '~'}.`, 'running', {
               deviceId: input.deviceId,
               projectId,
               sessionId,
