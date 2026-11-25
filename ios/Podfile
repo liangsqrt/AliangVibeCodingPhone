@@ -5,6 +5,9 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+# Build RN Core from source so the Fabric ScrollView patch is included (RN #59284).
+ENV['RCT_USE_PREBUILT_RNCORE'] = '0'
+
 platform :ios, '16.0'
 prepare_react_native_project!
 
