@@ -47,6 +47,7 @@ import { AttachmentChips } from '../../components/vibecoding/AttachmentChips';
 import { SessionPreviewCard } from './SessionPreviewCard';
 import { revokePortMapping } from '../../api/portMappings';
 import { resolvePullToRefreshAction } from './sessionRefreshDispatch';
+import { selectDraftAttachmentsCapability } from './draftAttachments';
 import { firstServerConfirmedMessage } from '../../utils/sessionCatchUp';
 import {
   MessageComposer,
@@ -866,9 +867,22 @@ export const VibeCodingSessionScreen: React.FC = () => {
     state => state.clear,
   );
   const showToast = useToastStore(state => state.show);
+  // 素材能力位（草稿态）：服务端没配 COS 时 `enabled === false`。会话级能力位只在
+  // 单会话详情 / WS ai.session.updated 帧里下发，列表快照没有这个键 —— 所以草稿
+  // （首条消息前）用「任意已知会话的能力位」做忠实代理，代理也没有时回退部署级
+  // platformFeatures.attachmentsCapability（mobile snapshot features.attachments，
+  // 服务端专为草稿入口下发；零详情缓存的新装用户靠它可见，2026-11-25 接线）。
+  // 能力位未知（连部署级位都没有，旧 server / 未同步）按不可用处理——不让用户
+  // 点进一条注定失败的链路。
+  const draftAttachmentsCapability = useControlCenterStore(state =>
+    selectDraftAttachmentsCapability(state, draftConfig),
+  );
   // 服务端下发的单条消息素材上限；能力位未知时按 1 兜底（宁少勿多）。
+  // 已有会话只信自己的位；草稿（尚无会话）用代理/部署级位的上限。
   const attachmentMaxPerMessage =
-    session?.attachmentsCapability?.max_per_message ?? 1;
+    session?.attachmentsCapability?.max_per_message ??
+    (session == null ? draftAttachmentsCapability?.max_per_message : undefined) ??
+    1;
 
   const handleOpenAttachments = useCallback(() => {
     // 两个菜单互斥：素材菜单盖在输入面板上，底下再开着工具菜单没有意义。
@@ -972,29 +986,12 @@ export const VibeCodingSessionScreen: React.FC = () => {
     void clearAttachmentLibrary();
   }, [clearAttachmentLibrary]);
 
-  // 入口可用性：goal 会话走 queueGoalMessage，没有素材通道；服务端没配 COS
-  // 时 `enabled === false`。能力位未知（列表快照不带 → undefined）按不可用
-  // 处理——不让用户点进一条注定失败的链路。
-  //
-  // 草稿（首条消息前）曾经一票否决——「没有 sessionId 上传无处可去」。但
-  // capability 的 enabled 只取决于服务端 COS 配置，是**部署级全局**而非会话级
-  // （attachments/capability.ts），所以草稿可以用「任意已知会话的能力位」做
-  // 忠实代理：有任一会话报告 enabled，草稿将来也必然 enabled。素材本身在
-  // 挑选时只是本地 LocalAsset，上传发生在发送时——草稿发送路径已补上
-  // 「会话落地后立刻补发素材消息」（见 appendUserMessage 草稿分支）。
-  const draftAttachmentsCapability = useControlCenterStore(state => {
-    if (!draftConfig) return undefined;
-    // 先找同设备的会话（代理最忠实），退化到任意会话。
-    for (const run of state.vibeRuns) {
-      if (run.deviceId === draftConfig.deviceId && run.attachmentsCapability !== undefined) {
-        return run.attachmentsCapability;
-      }
-    }
-    for (const run of state.vibeRuns) {
-      if (run.attachmentsCapability !== undefined) return run.attachmentsCapability;
-    }
-    return undefined;
-  });
+  // 入口可用性：goal 会话走 queueGoalMessage，没有素材通道。草稿态的代理/部署级
+  // 回退见上方 selectDraftAttachmentsCapability —— 草稿曾经一票否决（「没有
+  // sessionId 上传无处可去」），后经「任意会话能力位代理」放开，但仍要求用户
+  // 点开过至少一次会话详情；2026-11-25 起补上部署级兜底，素材本身在挑选时只是
+  // 本地 LocalAsset，上传发生在发送时——草稿发送路径已补上「会话落地后立刻
+  // 补发素材消息」（见 appendUserMessage 草稿分支）。
   const attachmentsEnabled =
     session != null
       ? session.purpose !== 'goal' && session.attachmentsCapability?.enabled === true
