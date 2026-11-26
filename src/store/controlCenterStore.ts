@@ -20,6 +20,8 @@ import { findRecentActiveTerminalSession } from '../utils/terminalInteraction';
 import {
   flushAiStreamEvents,
   isAiStreamTransportEvent,
+  markAiStreamRunFinished,
+  markAiStreamRunStarted,
   pushAiStreamEvent,
   registerAiStreamApplier,
 } from './aiStreamBatching';
@@ -730,6 +732,14 @@ export const useControlCenterStore = create<ControlCenterState>()(
             // (failed/completed) and waiting_approval are preserved.
             case 'ai.run.started':
             case 'ai.run.progress': {
+              if (transportEvent.type === 'ai.run.started') {
+                markAiStreamRunStarted(
+                  transportEvent.sessionId,
+                  typeof transportEvent.raw.run_id === 'string'
+                    ? transportEvent.raw.run_id
+                    : undefined,
+                );
+              }
               // 事件钟:信封 created_at(服务端 2026-10 配套入 payload)优先,
               // 心跳刷新到事件的真实时刻;老信封无钟 → 回退本地 now,与历史
               // 契约逐字节一致(心跳保活:stale-demotion 守卫需要新鲜基线)。
@@ -777,6 +787,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
             }
 
             case 'ai.done':
+              markAiStreamRunFinished(transportEvent.sessionId);
               // ai.done = 一条流式回合回复结束,**不等于整条 run 结束**。工具型 agent
               // (一次 prompt 里多次工具调用)或 codex 这类,下一回合几秒内就到——所以服务端
               // 对 ai.done 只 arm 一个 soft-settle(ALIANG_AI_IDLE_SETTLE_MS,默认 10s),10s
@@ -854,6 +865,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
               }
 
             case 'ai.error': {
+              markAiStreamRunFinished(transportEvent.sessionId);
               // Busy-class refusals (server 409 ai_session_busy / agent spawn
               // precheck tui_busy) get the localized friendly copy; anything
               // else keeps the raw agent error text.
