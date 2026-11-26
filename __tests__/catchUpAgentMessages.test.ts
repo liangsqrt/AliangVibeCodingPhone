@@ -153,6 +153,40 @@ describe('catchUpAgentMessages', () => {
     ).toBe(4);
   });
 
+  it('preserves the old cursor when a reconnect snapshot skips a page', async () => {
+    seedStore([msg('msg_0', 0)]);
+    const store = useControlCenterStore.getState();
+    const rows = Array.from({ length: 46 }, (_, index) =>
+      wireMessage(`msg_${index}`, index),
+    );
+    mockedLoadMessages.mockResolvedValue({
+      session_id: 's1',
+      messages: rows.slice(1),
+      page: { has_more: false, anchor_found: true, total_count: 46 },
+    });
+    store.handleTransportEvent({
+      type: 'ai.session.updated',
+      session: {
+        session_id: 's1',
+        device_id: 'device-1',
+        status: 'idle',
+        transcript: rows.slice(-40),
+        transcript_count: 46,
+        transcript_page: { has_more: true, total_count: 46, count: 40, limit: 40 },
+      },
+    } as never);
+    const afterSnapshot = useControlCenterStore.getState().vibeRuns[0];
+    expect(afterSnapshot.transcriptCount).toBe(46);
+
+    await store.catchUpAgentMessages('s1', afterSnapshot.transcriptCount!);
+
+    expect(mockedLoadMessages).toHaveBeenCalledWith('s1', {
+      limit: expect.any(Number), after: 'msg_0',
+    });
+    expect(useControlCenterStore.getState().vibeRuns[0].transcript.map(row => row.id))
+      .toEqual(rows.map(row => row.id));
+  });
+
   it('不落后时零网络请求', async () => {
     seedStore([msg('msg_a', 0), msg('msg_b', 1)]);
 

@@ -16,7 +16,11 @@ import { normalizeProvider, providerLabel } from '../utils/modelIntensity';
 import { sameRemotePath } from '../utils/remotePath';
 import { normalizeFileStatus } from '../utils/fileStatus';
 import { isClaudeCodeMetaUserContent } from '../utils/agentTranscript';
-import { countServerConfirmedMessages } from '../utils/sessionCatchUp';
+import {
+  countServerConfirmedMessages,
+  latestServerConfirmedMessageId,
+  materializedServerMessageCount,
+} from '../utils/sessionCatchUp';
 import {
   isActiveDisplayPhase,
   isApprovalLikeLegacyStatus,
@@ -1155,7 +1159,20 @@ export function mergeVibeRunSnapshot(
     : existingHasVersionAuthority
       ? true
       : staleDemotion || staleReactivation;
-  const transcript = incomingHasDetail
+  // A bounded latest page can jump ahead of the last locally confirmed
+  // message. Apply its count first so the existing after-cursor catch-up
+  // reads from that message before the new tail advances the local cursor.
+  let awaitsCatchUp = false;
+  const incomingCount = incoming.transcriptCount ?? 0;
+  if (incomingHasDetail && incoming.transcriptPage?.hasMore === true &&
+      incoming.transcript.length > 0 && existing.transcript.length > 0 &&
+      incomingCount > incoming.transcript.length &&
+      incomingCount - incoming.transcript.length > materializedServerMessageCount(existing)) {
+    const anchor = latestServerConfirmedMessageId(existing);
+    awaitsCatchUp = anchor !== undefined &&
+      !incoming.transcript.some(message => message.id === anchor);
+  }
+  const transcript = incomingHasDetail && !awaitsCatchUp
     ? mergeAgentMessages(existing.transcript, incoming.transcript)
     : existing.transcript;
   const events = incomingHasDetail
@@ -1282,7 +1299,9 @@ export function mergeVibeRunSnapshot(
     // 抹成 undefined——这里显式声明语义:服务器一旦带来内容,缓存标记即失效;
     // 空的列表/状态快照不携带内容,保留标记(此时 transcript 仍是缓存那批)。
     transcriptSource:
-      incoming.transcript.length > 0 ? undefined : existing.transcriptSource,
+      !awaitsCatchUp && incoming.transcript.length > 0
+        ? undefined
+        : existing.transcriptSource,
     // structuredEvents 守卫(2026-10-18 审计 C0):serverAiSessionToVibeRun 恒置该
     // 键,不带 structured_events 的载荷(列表/全局快照/重命名/打断响应)会映射成
     // [],裸 spread 整表覆写即把常驻活动墙清空。transcript/events 各有守卫,这里
@@ -1302,7 +1321,7 @@ export function mergeVibeRunSnapshot(
     // 自愈路径上的反噬。undefined 的 incoming(列表快照不带页)保持旧行为。
     transcriptPage: acceptServerTranscriptPage(
       existing.transcriptPage,
-      incoming.transcriptPage,
+      awaitsCatchUp ? undefined : incoming.transcriptPage,
       transcript,
     ),
     // effective_model_config is only attached to detail snapshots; keep the last
