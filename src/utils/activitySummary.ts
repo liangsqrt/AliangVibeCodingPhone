@@ -31,6 +31,25 @@ export interface ActivitySummary {
 
 const fmtChars = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
+/**
+ * 同一气泡（同一 assistant 消息）可落多个 `ai.task` 事件——codex 原生
+ * turn/plan/updated（整表快照，无 item_id）与 item/plan/delta（单条、恒
+ * in_progress）共享同一 anchor，服务端按 itemId 派生不同 event_id 分行入库。
+ * 渲染取「信息最全」的一份而非数组第一个：tasks 数量多者优先（整表快照
+ * 天然压过单条 delta），同数量后来者胜（状态更新鲜）。否则进度会冻结在
+ * 最早的事件上（🎯 x/y 永不推进）。
+ */
+export function pickLatestTaskEvent(
+  events: ReadonlyArray<StructuredActivityEvent>,
+): Extract<StructuredActivityEvent, { kind: 'task' }> | undefined {
+  let best: Extract<StructuredActivityEvent, { kind: 'task' }> | undefined;
+  for (const e of events) {
+    if (e.kind !== 'task') continue;
+    if (!best || e.tasks.length >= best.tasks.length) best = e;
+  }
+  return best;
+}
+
 export function summarizeActivity(
   events: StructuredActivityEvent[],
   turnSettled = true,
@@ -40,7 +59,7 @@ export function summarizeActivity(
   const files = events.filter((e): e is Extract<StructuredActivityEvent, { kind: 'file_change' }> => e.kind === 'file_change');
   const thinking = events.filter((e): e is Extract<StructuredActivityEvent, { kind: 'thinking' }> => e.kind === 'thinking');
   const usage = events.filter((e): e is Extract<StructuredActivityEvent, { kind: 'usage' }> => e.kind === 'usage');
-  const task = events.find((e): e is Extract<StructuredActivityEvent, { kind: 'task' }> => e.kind === 'task');
+  const task = pickLatestTaskEvent(events);
   const subagents = events.filter((e): e is Extract<StructuredActivityEvent, { kind: 'subagent' }> => e.kind === 'subagent');
   const openCmd = cmds.find(c => c.status === 'started');
   const activeThink = thinking.some(t => t.active);

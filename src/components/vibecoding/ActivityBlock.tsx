@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { GlassPanel } from '../shared/GlassPanel';
 import { CodeHighlight } from '../shared/CodeHighlight';
-import { summarizeActivity } from '../../utils/activitySummary';
+import { pickLatestTaskEvent, summarizeActivity } from '../../utils/activitySummary';
 import {
   activityEventsRenderSignature,
   relevantActivityDetailsEqual,
@@ -206,10 +206,9 @@ const ToolActivityBlock: React.FC<ActivityBlockProps> = ({
       (e): e is Extract<StructuredActivityEvent, { kind: 'file_change' }> =>
         e.kind === 'file_change',
     );
-    const task = events.find(
-      (e): e is Extract<StructuredActivityEvent, { kind: 'task' }> =>
-        e.kind === 'task',
-    );
+    // 同气泡多 task 事件时取信息最全的一份（整表快照压过单条 delta），
+    // 与 summarizeActivity 同一口径——否则 🎯 计数冻结在最早的事件上。
+    const task = pickLatestTaskEvent(events);
     const subagents = events.filter(
       (e): e is Extract<StructuredActivityEvent, { kind: 'subagent' }> =>
         e.kind === 'subagent',

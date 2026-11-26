@@ -1,5 +1,9 @@
 import type { StructuredActivityEvent } from '../../data/platformModels';
-import { deriveLivePulse, summarizeActivity } from '../activitySummary';
+import {
+  deriveLivePulse,
+  pickLatestTaskEvent,
+  summarizeActivity,
+} from '../activitySummary';
 
 const cmd = (
   overrides: Partial<
@@ -68,6 +72,19 @@ const task = (
     { subject: 'Pending task', status: 'pending' },
   ],
   ...overrides,
+});
+
+describe('pickLatestTaskEvent', () => {
+  it('returns undefined when no task event present', () => {
+    expect(pickLatestTaskEvent([cmd(), fileChange()])).toBeUndefined();
+    expect(pickLatestTaskEvent([])).toBeUndefined();
+  });
+
+  it('picks the only task event', () => {
+    const picked = pickLatestTaskEvent([cmd(), task()]);
+    expect(picked?.eventId).toBe('tk-1');
+    expect(picked?.tasks).toHaveLength(3);
+  });
 });
 
 describe('summarizeActivity', () => {
@@ -144,10 +161,71 @@ describe('summarizeActivity', () => {
       expect(summary?.fileCount).toBe(3);
     });
 
-    it('counts task done/total from the first task event', () => {
+    it('counts task done/total from the richest task event (not the first)', () => {
       const summary = summarizeActivity([task()]);
       expect(summary?.taskTotal).toBe(3);
       expect(summary?.taskDone).toBe(1);
+    });
+
+    it('later full snapshot (completed states) wins over earlier single-item delta', () => {
+      // codex 原生 plan run 时序:先 item/plan/delta(单条、恒 in_progress),
+      // 后 turn/plan/updated(整表、含 completed)——冻结在 delta 上即本缺陷。
+      const summary = summarizeActivity([
+        task({
+          eventId: 'tk-delta',
+          tasks: [{ subject: 'Running tests', status: 'in_progress' }],
+        }),
+        task({
+          eventId: 'tk-snapshot',
+          tasks: [
+            { subject: 'Write tests', status: 'completed' },
+            { subject: 'Running tests', status: 'completed' },
+            { subject: 'Pending task', status: 'pending' },
+          ],
+        }),
+      ]);
+      expect(summary?.taskDone).toBe(2);
+      expect(summary?.taskTotal).toBe(3);
+    });
+
+    it('later smaller delta does not regress an earlier full snapshot', () => {
+      const summary = summarizeActivity([
+        task({
+          eventId: 'tk-snapshot',
+          tasks: [
+            { subject: 'Write tests', status: 'completed' },
+            { subject: 'Running tests', status: 'completed' },
+            { subject: 'Pending task', status: 'pending' },
+          ],
+        }),
+        task({
+          eventId: 'tk-delta',
+          tasks: [{ subject: 'Running tests', status: 'in_progress' }],
+        }),
+      ]);
+      expect(summary?.taskDone).toBe(2);
+      expect(summary?.taskTotal).toBe(3);
+    });
+
+    it('equal-size events: later wins (fresher statuses)', () => {
+      const summary = summarizeActivity([
+        task({
+          eventId: 'tk-old',
+          tasks: [
+            { subject: 'a', status: 'in_progress' },
+            { subject: 'b', status: 'pending' },
+          ],
+        }),
+        task({
+          eventId: 'tk-new',
+          tasks: [
+            { subject: 'a', status: 'completed' },
+            { subject: 'b', status: 'in_progress' },
+          ],
+        }),
+      ]);
+      expect(summary?.taskDone).toBe(1);
+      expect(summary?.taskCurrent).toBe('b');
     });
 
     it('exposes the in_progress task subject as taskCurrent', () => {
