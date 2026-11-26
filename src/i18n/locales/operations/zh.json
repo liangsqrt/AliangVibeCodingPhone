@@ -79,5 +79,44 @@
     "timeMinutes": "{{count}} 分钟前",
     "timeHours": "{{count}} 小时前",
     "timeDays": "{{count}} 天前"
+  },
+  "activity": {
+    "subagentDetails": "查看子 Agent 报告",
+    "deviceOffline": "设备离线",
+    "title": "任务活动",
+    "stale": "正在显示上次同步的进度。",
+    "back": "返回任务列表",
+    "updated": "更新于 {{value}}",
+    "openSession": "打开会话",
+    "all": "全部任务",
+    "active": "进行中",
+    "empty": "暂无任务。",
+    "phase": {
+      "queued": "排队中",
+      "running": "运行中",
+      "waiting": "等待中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消",
+      "interrupted": "已中断"
+    },
+    "stage": {
+      "save_failed": "保存失败，可重试",
+      "uploading": "正在上传",
+      "completing": "正在准备文件",
+      "ready": "等待下载",
+      "receiving": "正在接收",
+      "saving": "正在保存到手机"
+    },
+    "timeline": "阶段记录",
+    "rate": "{{value}}/秒",
+    "eta": "预计剩余 {{value}} 分钟",
+    "type": {
+      "ai_progress": "AI 任务",
+      "ai_run": "AI 回合",
+      "subagent": "子 Agent",
+      "transfer": "设备互传",
+      "file_download": "文件下载"
+    }
   }
 }

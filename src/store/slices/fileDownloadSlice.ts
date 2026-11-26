@@ -42,6 +42,7 @@ const toEventPayload = (
   fallbackRequestId: string,
 ): PlatformFileDownloadStatus => ({
   requestId: status.request_id || fallbackRequestId,
+  operationId: status.operation_id,
   state: status.state,
   uploadedBytes: status.uploaded_bytes,
   totalBytes: status.total_bytes,
@@ -87,6 +88,7 @@ export const createFileDownloadSlice: StateCreator<
           fileDownloadActive: {
             ...active,
             requestId: status.request_id,
+            operationId: status.operation_id,
             totalBytes: status.total_bytes ?? 0,
             uploadedBytes: status.uploaded_bytes ?? 0,
             url: status.url,
@@ -144,6 +146,7 @@ export const createFileDownloadSlice: StateCreator<
           : download.uploadedBytes ?? active.uploadedBytes,
         totalBytes: download.totalBytes ?? active.totalBytes,
         url: download.url ?? active.url,
+        operationId: download.operationId ?? active.operationId,
         reason: download.reason ?? active.reason,
       },
       fileDownloadPhase: holding ? current : nextPhase,

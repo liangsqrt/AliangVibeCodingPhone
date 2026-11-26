@@ -79,5 +79,44 @@
     "timeMinutes": "{{count}}m ago",
     "timeHours": "{{count}}h ago",
     "timeDays": "{{count}}d ago"
+  },
+  "activity": {
+    "subagentDetails": "Open subagent reports",
+    "deviceOffline": "Device offline",
+    "title": "Task activity",
+    "stale": "Showing the last available progress.",
+    "back": "Back to tasks",
+    "updated": "Updated {{value}}",
+    "openSession": "Open conversation",
+    "all": "All tasks",
+    "active": "Active",
+    "empty": "No tasks to show.",
+    "phase": {
+      "queued": "Queued",
+      "running": "Running",
+      "waiting": "Waiting",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled",
+      "interrupted": "Interrupted"
+    },
+    "stage": {
+      "save_failed": "Save failed · retry available",
+      "uploading": "Uploading",
+      "completing": "Preparing file",
+      "ready": "Ready to download",
+      "receiving": "Receiving",
+      "saving": "Saving on phone"
+    },
+    "timeline": "Phase history",
+    "rate": "{{value}}/s",
+    "eta": "About {{value}} min remaining",
+    "type": {
+      "ai_progress": "AI task",
+      "ai_run": "AI run",
+      "subagent": "Subagent",
+      "transfer": "File transfer",
+      "file_download": "File download"
+    }
   }
 }

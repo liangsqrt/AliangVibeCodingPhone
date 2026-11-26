@@ -321,6 +321,7 @@ export const createRealtimeSlice: StateCreator<ControlCenterState, [], [], Realt
   },
 
   resetSessionData: () => {
+    get().clearOperations();
     platformTransport.disconnect();
     cancelAiStreamBatch();
     cancelTerminalBatch();

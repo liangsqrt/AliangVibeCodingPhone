@@ -115,6 +115,7 @@ export interface ServerProjectFileList {
  */
 export interface FileDownloadStatus {
   request_id: string;
+  operation_id?: string;
   state: 'uploading' | 'ready' | 'failed' | 'cancelled' | 'completed';
   uploaded_bytes?: number;
   total_bytes?: number;
@@ -423,3 +424,12 @@ export const refreshProjectAiSessions = (
     `/api/projects/${projectId}/ai-sessions/refresh`,
     {},
   );
+
+export const reportProjectFileSaveProgress = (
+  projectId: string,
+  requestId: string,
+  progress: { received_bytes?: number; failed?: true },
+) => apiPost<void>(
+  `/api/projects/${encodeURIComponent(projectId)}/files/download/${encodeURIComponent(requestId)}/progress`,
+  progress,
+);

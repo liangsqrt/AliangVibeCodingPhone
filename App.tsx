@@ -1,3 +1,4 @@
+import { AppState } from 'react-native';
 import React, { useEffect } from 'react';
 import { StatusBar } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -52,6 +53,14 @@ function AppContent({ debugDeviceTerminal }: AppInitialProps = {}) {
   const hasHydrated = useSessionStore(state => state.hasHydrated);
   const token = useSessionStore(state => state.token);
   const userId = useSessionStore(state => state.user?.id);
+  useEffect(() => {
+    if (!token || !userId) return;
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') void useControlCenterStore.getState().refreshOperations();
+    });
+    return () => subscription.remove();
+  }, [token, userId]);
+
   useBackgroundNotifications({
     enabled: hasHydrated && Boolean(token && userId),
     userId,

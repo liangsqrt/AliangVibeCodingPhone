@@ -75,6 +75,7 @@ import { createApprovalSlice } from './slices/approvalSlice';
 import { createAiSessionSlice } from './slices/aiSessionSlice';
 import { createDeviceProjectSlice } from './slices/deviceProjectSlice';
 import { createFileDownloadSlice } from './slices/fileDownloadSlice';
+import { createOperationsSlice } from './slices/operationsSlice';
 import { createTransferSlice } from './slices/transferSlice';
 import { reconcileStructured } from './slices/structuredSlice';
 import { attachTranscriptCache } from './transcriptCache';
@@ -553,6 +554,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
       ...createDeviceProjectSlice(set, get, store),
       ...createFileDownloadSlice(set, get, store),
       ...createTransferSlice(set, get, store),
+      ...createOperationsSlice(set, get, store),
 
       // Only the global activity log lives here; all domain data is owned by slices.
       events: [],
@@ -588,6 +590,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
               perfMark(`ws:${transportEvent.status}`);
               if (transportEvent.status === 'connected') {
                 set({ wsConnected: true });
+                void get().refreshOperations();
                 if (get().serverMode) {
                   get()
                     .refreshFromServer()
@@ -1896,6 +1899,10 @@ export const useControlCenterStore = create<ControlCenterState>()(
                     .catch(() => {}),
                 );
               }
+              return;
+
+            case 'operation.updated':
+              get().applyOperationEvent(transportEvent.operation);
               return;
 
             case 'file_download':

@@ -1,3 +1,4 @@
+import type { Operation } from '../api/operations';
 import type {
   AgentCommandInfo,
   AgentTranscriptPage,
@@ -370,6 +371,7 @@ export interface ActiveDownload {
   projectId: string;
   /** '' while the start POST is in flight. */
   requestId: string;
+  operationId?: string;
   path: string;
   /** Display name for the sheet/share dialog (from the file list entry). */
   filename: string;
@@ -574,6 +576,11 @@ export interface ControlCenterState {
   // Actions
   initializeFromServer: (token?: string) => Promise<void>;
   refreshFromServer: () => Promise<RefreshOutcome>;
+  operations: Operation[];
+  operationsUnavailable: boolean;
+  refreshOperations: () => Promise<void>;
+  applyOperationEvent: (operation: Operation) => void;
+  clearOperations: () => void;
   disconnectFromServer: () => void;
   resetSessionData: () => void;
   markStale: () => void;

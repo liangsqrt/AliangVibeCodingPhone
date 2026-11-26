@@ -1,3 +1,4 @@
+import { reportProjectFileSaveProgress } from '../../api/projects';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -442,7 +443,15 @@ export const FileBrowserScreen: React.FC = () => {
     handledSaveRequestRef.current = target.requestId;
     const { projectId, requestId, filename, url } = target;
     markSaving();
-    saveDownloadedFile({ url, filename })
+    const reportSave = fileDownloadActive?.operationId
+      ? (progress: { received_bytes?: number; failed?: true }) => {
+          if (useControlCenterStore.getState().fileDownloadActive?.requestId === requestId) {
+            void reportProjectFileSaveProgress(projectId, requestId, progress).catch(() => {});
+          }
+        }
+      : undefined;
+    reportSave?.({});
+    saveDownloadedFile({ url, filename, onProgress: reportSave ? bytes => reportSave({ received_bytes: bytes }) : undefined })
       .then(() => {
         if (useControlCenterStore.getState().fileDownloadActive?.requestId !== requestId) return; // 取消/重置后不再惊扰 UI
         markDone();
@@ -455,6 +464,7 @@ export const FileBrowserScreen: React.FC = () => {
       })
       .catch((error: unknown) => {
         if (useControlCenterStore.getState().fileDownloadActive?.requestId !== requestId) return; // 取消/重置后不再惊扰 UI
+        reportSave?.({ failed: true });
         handledSaveRequestRef.current = null; // 允许对账翻回 ready 后重试落盘（save 失败≠下载失败，COS url 仍有效）
         markFailed(
           error instanceof Error && error.message

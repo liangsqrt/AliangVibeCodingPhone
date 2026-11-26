@@ -1,3 +1,4 @@
+import { parseOperation, type Operation } from '../api/operations';
 import {
   unbindDevice as apiUnbindDevice,
   updateDeviceSettings as apiUpdateDeviceSettings,
@@ -158,6 +159,7 @@ export interface PlatformPreviewSnapshot {
  */
 export interface PlatformFileDownloadStatus {
   requestId: string;
+  operationId?: string;
   state: 'uploading' | 'ready' | 'failed' | 'cancelled' | 'completed';
   uploadedBytes?: number;
   totalBytes?: number;
@@ -225,6 +227,7 @@ export type PlatformTransportEvent =
   | { type: 'notifications.updated'; readAll: boolean; raw: Record<string, unknown> }
   | { type: 'preview.ready'; preview: PlatformPreviewSnapshot; expiresIn: string; raw: Record<string, unknown> }
   | { type: 'preview.updated'; preview: PlatformPreviewSnapshot; raw: Record<string, unknown> }
+  | { type: 'operation.updated'; operation: Operation; raw: Record<string, unknown> }
   | { type: 'file_download'; download: PlatformFileDownloadStatus; raw: Record<string, unknown> }
   | { type: 'transfer.updated'; transfer: PlatformTransferStatus; raw: Record<string, unknown> }
   | { type: 'project.updated'; project: PlatformProjectSnapshot; raw: Record<string, unknown> }
@@ -1001,6 +1004,11 @@ class PlatformTransport {
       } as PlatformTransportEvent;
     }
 
+    if (type === 'operation.updated') {
+      const operation = parseOperation(message.operation);
+      if (operation) return { type, operation, raw: message };
+    }
+
     if (type === 'file_download' && message.download && typeof message.download === 'object') {
       const download = message.download as Record<string, unknown>;
       return {
@@ -1008,6 +1016,7 @@ class PlatformTransport {
         download: {
           requestId: String(download.request_id ?? ''),
           state: String(download.state ?? 'uploading') as PlatformFileDownloadStatus['state'],
+          operationId: asString(download.operation_id),
           uploadedBytes: typeof download.uploaded_bytes === 'number' ? download.uploaded_bytes : undefined,
           totalBytes: typeof download.total_bytes === 'number' ? download.total_bytes : undefined,
           url: asString(download.url),

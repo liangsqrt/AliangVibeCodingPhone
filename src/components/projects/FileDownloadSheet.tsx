@@ -1,3 +1,4 @@
+import { operationPercent } from '../../api/operations';
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -58,6 +59,7 @@ export const FileDownloadSheet: React.FC<FileDownloadSheetProps> = ({
 }) => {
   const { theme } = useTheme();
   const { t } = useTranslation(['projects', 'common']);
+  const operations = useControlCenterStore(state => state.operations);
   const phase = useControlCenterStore(state => state.fileDownloadPhase);
   const active = useControlCenterStore(state => state.fileDownloadActive);
   const capability = useControlCenterStore(state => state.fileDownloadCapability);
@@ -211,11 +213,24 @@ export const FileDownloadSheet: React.FC<FileDownloadSheetProps> = ({
     );
   };
 
+  const savedOperation = active?.operationId
+    ? operations.find(row => row.operation_id === active.operationId && row.stage === 'saving')
+    : undefined;
+  const savingPercent = savedOperation ? operationPercent(savedOperation) : undefined;
+
   const renderDownloading = () => (
     <View style={styles.body}>
       <Text style={[theme.typography.bodyMd, { color: theme.colors.onSurface }]}>
         {t('fileBrowser.download.downloading')}
       </Text>
+      {savingPercent !== undefined && (
+        <View accessibilityRole="progressbar" accessibilityValue={{ min: 0, max: 100, now: savingPercent }}>
+          <View style={[styles.track, { backgroundColor: theme.colors.surfaceContainerHighest }]}>
+            <View style={[styles.fill, { width: `${savingPercent}%`, backgroundColor: theme.colors.primary }]} />
+          </View>
+          <Text style={[theme.typography.codeSm, { color: theme.colors.onSurfaceVariant }]}>{savingPercent}%</Text>
+        </View>
+      )}
       <GlowButton
         title={t('fileBrowser.download.cancel')}
         onPress={handleCancel}

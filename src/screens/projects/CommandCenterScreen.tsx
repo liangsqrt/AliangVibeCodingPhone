@@ -1,4 +1,6 @@
-import React, { useContext, useMemo } from 'react';
+import { OperationActivitySheet } from '../../components/operations/OperationActivitySheet';
+import { isActiveOperation } from '../../api/operations';
+import React, { useContext, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   View,
@@ -119,6 +121,9 @@ const getProjectActivityMs = (
 };
 
 export const CommandCenterScreen: React.FC = () => {
+  const [operationsOpen, setOperationsOpen] = useState(false);
+  const { t: tOperations } = useTranslation('operations');
+  const activeOperations = useControlCenterStore(s => s.operations.filter(isActiveOperation).length);
   const { theme, isDark } = useTheme();
   const { t } = useTranslation('projects');
   const navigation = useNavigation<Navigation>();
@@ -777,6 +782,20 @@ export const CommandCenterScreen: React.FC = () => {
             onPress={() => navigation.navigate('DeviceCameraScanner')}
             style={styles.actionMiniTile}
           />
+          <ActionTile
+            icon="event"
+            label={tOperations('activity.title')}
+            value={activeOperations ? String(activeOperations) : undefined}
+            tone={activeOperations ? 'primary' : 'neutral'}
+            mini
+            onPress={() => setOperationsOpen(true)}
+            style={styles.actionMiniTile}
+          />
+          <OperationActivitySheet open={operationsOpen} onClose={() => setOperationsOpen(false)}
+            onOpenSession={sessionId => {
+              setOperationsOpen(false);
+              navigation.navigate('VibeCodingSession', { sessionId });
+            }} />
           {/* 监听器面板快捷入口:未读数作 value,有新事件时点亮 primary。 */}
           <View testID="cc-listener-tile" style={styles.actionMiniTile}>
             <ActionTile

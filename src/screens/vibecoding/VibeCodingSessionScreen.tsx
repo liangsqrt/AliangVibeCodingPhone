@@ -1,3 +1,4 @@
+import { OperationActivitySheet } from '../../components/operations/OperationActivitySheet';
 import React, {
   useCallback,
   useEffect,
@@ -833,6 +834,16 @@ export const VibeCodingSessionScreen: React.FC = () => {
   }, []);
   // 后台任务面板（右侧滑出）：本会话子 agent / 后台执行的聚合状态。
   const [backgroundTasksOpen, setBackgroundTasksOpen] = useState(false);
+  const [operationTasksScope, setOperationTasksScope] = useState<'session' | 'subagent'>();
+  const { t: tOperations } = useTranslation('operations');
+  const hasSessionOperations = useControlCenterStore(state =>
+    Boolean(session?.id && state.operations?.some(row => row.session_id === session.id && row.source_kind !== 'subagent')),
+  );
+  const hasProjectedSubagents = useControlCenterStore(state =>
+    Boolean(session?.id && state.operations?.some(row => row.session_id === session.id && row.source_kind === 'subagent')),
+  );
+  useEffect(() => setOperationTasksScope(undefined), [session?.id]);
+
   // 子代理事件聚合（引用稳定 memo）：面板打开时整列下发；活跃计数驱动顶栏
   // 入口的 tone（有活跃任务 = primary，纯历史 = neutral）。空数组共享常量
   // 避免 memo 抖动。
@@ -3533,11 +3544,17 @@ export const VibeCodingSessionScreen: React.FC = () => {
                   <IconBadge name="fingerprint" tone="neutral" size={26} iconSize={14} />
                 </TouchableOpacity>
               )}
+              {!isDraft && hasSessionOperations && (
+                <TouchableOpacity onPress={() => setOperationTasksScope('session')} accessibilityRole="button"
+                  accessibilityLabel={tOperations('activity.title')} hitSlop={8}>
+                  <IconBadge name="event" tone="primary" size={26} iconSize={14} />
+                </TouchableOpacity>
+              )}
               {/* 后台任务入口：本会话存在子 agent / 后台任务时显示（活跃任务
                   高亮 primary）。点击右侧划出聚合面板。 */}
               {!isDraft && subagentTaskEvents.length > 0 ? (
                 <TouchableOpacity
-                  onPress={() => setBackgroundTasksOpen(true)}
+                  onPress={() => hasProjectedSubagents ? setOperationTasksScope('subagent') : setBackgroundTasksOpen(true)}
                   activeOpacity={0.72}
                   hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
                   accessibilityRole="button"
@@ -4864,6 +4881,15 @@ export const VibeCodingSessionScreen: React.FC = () => {
           events={subagentTaskEvents}
         />
       ) : null}
+      {session && operationTasksScope && (
+        <OperationActivitySheet open onClose={() => setOperationTasksScope(undefined)} sessionId={session.id}
+          initialSource={operationTasksScope === 'subagent' ? 'subagent' : undefined}
+          onOpenSession={() => setOperationTasksScope(undefined)}
+          onOpenSubagents={operationTasksScope === 'subagent' ? () => {
+            setOperationTasksScope(undefined);
+            setBackgroundTasksOpen(true);
+          } : undefined} />
+      )}
       <ApprovalQuickPolicySheet
         projectId={session?.projectId ?? ''}
         toolName={quickPolicyFor?.toolName}
