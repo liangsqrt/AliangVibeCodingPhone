@@ -32,12 +32,16 @@ import {
 // Minimal fake WebSocket global: records every URL a connection was opened
 // against and lets the test drive onclose (the server auth-rejection path).
 class FakeWebSocket {
+  static OPEN = 1;
   static urls: string[] = [];
   readonly url: string;
   onopen: ((ev: unknown) => void) | null = null;
   onclose: ((ev: unknown) => void) | null = null;
   onmessage: ((ev: unknown) => void) | null = null;
   onerror: ((ev: unknown) => void) | null = null;
+  readyState = FakeWebSocket.OPEN;
+  sent: string[] = [];
+  send(payload: string) { this.sent.push(payload); }
   constructor(url: string) {
     this.url = url;
     FakeWebSocket.urls.push(url);
@@ -94,6 +98,86 @@ describe('MobileWebSocket refresh→reconnect uses rotated token', () => {
     expect(refreshSession).toHaveBeenCalledTimes(1);
 
     socket.disconnect();
+  });
+});
+
+describe('MobileWebSocket foreground liveness probe', () => {
+  const originalWebSocket = (globalThis as { WebSocket?: unknown }).WebSocket;
+
+  beforeEach(() => {
+    FakeWebSocket.reset();
+    (globalThis as { WebSocket: unknown }).WebSocket = FakeWebSocket;
+    (getApiAuthToken as jest.Mock).mockImplementation(() => 'T_OLD');
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    (globalThis as { WebSocket: unknown }).WebSocket = originalWebSocket;
+  });
+
+  async function connect() {
+    const socket = new MobileWebSocket(() => {}, { token: 'T_OLD' });
+    socket.connect();
+    await flush();
+    const connection = (socket as unknown as { ws: FakeWebSocket }).ws;
+    connection.onopen!({});
+    return { socket, connection };
+  }
+
+  it('retains a healthy socket after a delayed reply and coalesces duplicate probes', async () => {
+    const { socket, connection } = await connect();
+    jest.useFakeTimers();
+    try {
+      socket.probeForegroundConnection();
+      socket.probeForegroundConnection();
+      expect(connection.sent).toHaveLength(1);
+      jest.advanceTimersByTime(1500);
+      expect(connection.sent).toHaveLength(2);
+      connection.onmessage!({ data: JSON.stringify({ type: 'pong' }) });
+      socket.probeForegroundConnection();
+      jest.advanceTimersByTime(1500);
+      expect(connection.sent).toHaveLength(2);
+      expect(FakeWebSocket.urls).toHaveLength(1);
+    } finally {
+      socket.disconnect();
+    }
+  });
+
+  it('replaces a silent socket once and preserves backoff after an unsuccessful dial', async () => {
+    const { socket, connection } = await connect();
+    jest.useFakeTimers();
+    try {
+      socket.probeForegroundConnection();
+      jest.advanceTimersByTime(2999);
+      expect(FakeWebSocket.urls).toHaveLength(1);
+      expect(connection.sent).toHaveLength(2);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(FakeWebSocket.urls).toHaveLength(2);
+
+      const replacement = (socket as unknown as { ws: FakeWebSocket }).ws;
+      replacement.onclose!({ code: 1006, reason: '' });
+      socket.probeForegroundConnection();
+      await jest.advanceTimersByTimeAsync(999);
+      expect(FakeWebSocket.urls).toHaveLength(2);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(FakeWebSocket.urls).toHaveLength(3);
+    } finally {
+      socket.disconnect();
+    }
+  });
+
+  it('cancels pending probes when the app backgrounds or disconnects', async () => {
+    const { socket, connection } = await connect();
+    jest.useFakeTimers();
+    try {
+      socket.probeForegroundConnection();
+      socket.cancelForegroundProbe();
+      jest.advanceTimersByTime(3000);
+      expect(connection.sent).toHaveLength(1);
+      expect(FakeWebSocket.urls).toHaveLength(1);
+    } finally {
+      socket.disconnect();
+    }
   });
 });
 

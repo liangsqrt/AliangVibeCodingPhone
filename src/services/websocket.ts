@@ -38,6 +38,8 @@ const HEARTBEAT_MAX_MISSES = 1;
 // (2026-11-02 下午「消息发不出去」事故形态之一)。sttSocket.ts 因同一链路早有
 // 6s 帽,主 WS 此前没有。超时拆链并计入通道故障,让挂死也能驱动重连与通道翻转。
 const CONNECT_TIMEOUT_MS = 6_000;
+const FOREGROUND_PROBE_TIMEOUT_MS = 1_500;
+const FOREGROUND_PROBE_COOLDOWN_MS = 20_000;
 
 export class MobileWebSocket {
   private ws: WebSocket | null = null;
@@ -65,6 +67,8 @@ export class MobileWebSocket {
   // close frame) that React Native otherwise leaves reported as "connected".
   private awaitingPong = false;
   private heartbeatMisses = 0;
+  private foregroundProbeTimer: ReturnType<typeof setTimeout> | undefined;
+  private lastForegroundProbeAt = -Infinity;
 
   constructor(handler: WsMessageHandler, options: MobileWebSocketOptions = {}) {
     this.handler = handler;
@@ -98,6 +102,39 @@ export class MobileWebSocket {
     }
     this.ws.send(JSON.stringify(message));
     return true;
+  }
+
+  probeForegroundConnection(): void {
+    const socket = this.ws;
+    if (!this._connected || !socket || socket.readyState !== WebSocket.OPEN ||
+        this.foregroundProbeTimer !== undefined || this.reconnectTimer ||
+        this.intentionalClose || this.authRejected) return;
+    const now = performance.now();
+    if (now - this.lastForegroundProbeAt < FOREGROUND_PROBE_COOLDOWN_MS) return;
+    this.lastForegroundProbeAt = now;
+
+    // Any inbound traffic from this socket proves it is alive. Allow a
+    // second probe before replacing it and leave failed dials to normal backoff.
+    const ping = (remaining: number) => {
+      this.foregroundProbeTimer = setTimeout(() => {
+        this.foregroundProbeTimer = undefined;
+        if (this.ws !== socket || !this._connected) return;
+        if (remaining) ping(remaining - 1);
+        else this.forceReconnect('foreground_probe_timeout');
+      }, FOREGROUND_PROBE_TIMEOUT_MS);
+      try {
+        socket.send(JSON.stringify({ type: 'ping' }));
+      } catch {
+        // Give the socket the same grace as a missing response.
+      }
+    };
+    ping(1);
+  }
+
+  cancelForegroundProbe(): void {
+    if (this.foregroundProbeTimer === undefined) return;
+    clearTimeout(this.foregroundProbeTimer);
+    this.foregroundProbeTimer = undefined;
   }
 
   private async doConnect(): Promise<void> {
@@ -154,7 +191,8 @@ export class MobileWebSocket {
       if (this.ws !== ws) return;
       try {
         const parsed = JSON.parse(event.data as string) as Record<string, unknown>;
-        if (!parsed) return;
+        if (typeof parsed?.type !== 'string') return;
+        if (this.foregroundProbeTimer !== undefined) this.markAlive();
         // Liveness acks: the server replies to our heartbeat `ping` with `pong`
         // (and to `presence.alive` with `presence.ack`). Both prove the socket is
         // carrying traffic, so they clear the half-open detector. They're infra,
@@ -185,6 +223,7 @@ export class MobileWebSocket {
       if (connectTimedOut) return;
       this._connected = false;
       this.stopHeartbeat();
+      this.cancelForegroundProbe();
       this.onStateChange?.('disconnected');
       // The server rejected our token (1008 + auth reason). Before tearing the
       // session down (which logs the user out), try one refresh: a token that
@@ -264,7 +303,8 @@ export class MobileWebSocket {
     this.heartbeatMisses = 0;
     this.heartbeatTimer = setInterval(() => {
       const socket = this.ws;
-      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      if (!socket || socket.readyState !== WebSocket.OPEN ||
+          this.foregroundProbeTimer !== undefined) return;
       // Liveness probe. If the ping we sent on the previous beat never came
       // back (no pong/ack), the socket is most likely half-open: the server
       // restarted or was killed without emitting a close frame, and React
@@ -291,6 +331,7 @@ export class MobileWebSocket {
   private markAlive(): void {
     this.awaitingPong = false;
     this.heartbeatMisses = 0;
+    this.cancelForegroundProbe();
   }
 
   // Half-open/dead socket recovery. onclose may never fire for such a socket,
@@ -321,6 +362,7 @@ export class MobileWebSocket {
   }
 
   private cleanup(): void {
+    this.cancelForegroundProbe();
     this.stopHeartbeat();
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);

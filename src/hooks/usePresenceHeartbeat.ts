@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { clearFirstAiTextReceipt } from '../utils/devFrameProbe';
+import { getActiveSocket } from '../services/websocket';
 import { platformTransport } from '../services/platformTransport';
 import { useControlCenterStore } from '../store/controlCenterStore';
 
@@ -85,9 +86,11 @@ export function usePresenceHeartbeat(): void {
       if (state === 'active') {
         start();
         if (previousState !== 'active') {
+          getActiveSocket()?.probeForegroundConnection();
           resync();
         }
       } else {
+        getActiveSocket()?.cancelForegroundProbe();
         stop();
       }
     };
