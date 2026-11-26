@@ -52,4 +52,19 @@ export function operationPercent(operation: Operation): number | undefined {
   return Math.round(Math.max(0, Math.min(100, 100 * value.current / value.total)));
 }
 
+export function operationElapsedLabel(operation: Operation, now: number): string | undefined {
+  if (operation.phase === 'queued' || typeof operation.started_at !== 'string') return;
+  const start = Date.parse(operation.started_at);
+  const end = isActiveOperation(operation)
+    ? now
+    : typeof operation.finished_at === 'string' ? Date.parse(operation.finished_at) : NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return;
+
+  const seconds = Math.max(0, Math.floor((end - start) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = String(Math.floor(seconds / 60) % 60).padStart(2, '0');
+  const remainder = String(seconds % 60).padStart(2, '0');
+  return hours ? `${hours}:${minutes}:${remainder}` : `${minutes}:${remainder}`;
+}
+
 export const fetchOperations = () => apiGet<{ operations: unknown[] }>('/api/operations/snapshot');

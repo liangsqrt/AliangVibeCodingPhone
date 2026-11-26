@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppState, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { BottomSheet } from '../shared/BottomSheet';
 import { formatBytes } from '../../utils/format';
 import { useTheme } from '../../theme/useTheme';
-import { isActiveOperation, operationPercent, type Operation } from '../../api/operations';
+import { isActiveOperation, operationElapsedLabel, operationPercent, type Operation } from '../../api/operations';
 import { useControlCenterStore } from '../../store/controlCenterStore';
 
 interface Props {
@@ -28,6 +28,7 @@ export function OperationActivitySheet({ open, onClose, sessionId, initialSource
   const [source, setSource] = useState(initialSource);
   const [deviceId, setDeviceId] = useState<string>();
   const [selectedId, setSelectedId] = useState<string>();
+  const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (open) void refresh();
     else setSelectedId(undefined);
@@ -45,6 +46,26 @@ export function OperationActivitySheet({ open, onClose, sessionId, initialSource
   const deviceChoices = [...new Set(operationsInScope.map(row => row.source_device_id)
     .filter((id): id is string => Boolean(id)))];
   const selected = operationsInScope.find(row => row.operation_id === selectedId);
+  const showLiveElapsed = (selected ? [selected] : visible).some(row =>
+    (row.phase === 'running' || row.phase === 'waiting') &&
+    typeof row.started_at === 'string' && Number.isFinite(Date.parse(row.started_at)));
+  useEffect(() => {
+    if (!open || !showLiveElapsed) return;
+
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const updateClock = (active: boolean) => {
+      clearInterval(timer);
+      if (!active) return;
+      setNow(Date.now());
+      timer = setInterval(() => setNow(Date.now()), 1000);
+    };
+    const subscription = AppState.addEventListener('change', state => updateClock(state === 'active'));
+    updateClock(AppState.currentState == null || AppState.currentState === 'active');
+    return () => {
+      subscription.remove();
+      clearInterval(timer);
+    };
+  }, [open, showLiveElapsed]);
   const deviceName = (id?: string) => devices.find(device => device.id === id)?.name ??
     operations.find(row => row.source_device_id === id)?.source_device_name ?? id;
   const sourceLabel = (kind: string) => t(`activity.type.${kind}`, { defaultValue: kind });
@@ -60,6 +81,16 @@ export function OperationActivitySheet({ open, onClose, sessionId, initialSource
     isActiveOperation(row) && isDeviceOffline(row) ? t('activity.deviceOffline') : undefined,
     row.step ?? (row.stage && t(`activity.stage.${row.stage}`, { defaultValue: '' })),
   ].filter(Boolean).join(' · ');
+
+  const renderElapsed = (row: Operation) => {
+    const elapsed = operationElapsedLabel(row, now);
+    if (elapsed === undefined) return null;
+    return (
+      <Text style={[theme.typography.codeSm, { color: theme.colors.onSurfaceVariant }]}>
+        {t('activity.elapsed', { value: elapsed })}
+      </Text>
+    );
+  };
 
   const renderProgress = (row: Operation) => {
     const percent = operationPercent(row);
@@ -90,6 +121,7 @@ export function OperationActivitySheet({ open, onClose, sessionId, initialSource
             </Pressable>
             <Text style={[theme.typography.titleMd, { color: theme.colors.onSurface }]}>{selected.title}</Text>
             <Text style={{ color: theme.colors.onSurfaceVariant }}>{rowDetails(selected)}</Text>
+            {renderElapsed(selected)}
             {renderProgress(selected)}
             {selected.progress && (
               <Text style={{ color: theme.colors.onSurfaceVariant }}>
@@ -167,6 +199,7 @@ export function OperationActivitySheet({ open, onClose, sessionId, initialSource
                   style={[styles.row, { borderBottomColor: theme.colors.outlineVariant }]}>
                   <Text numberOfLines={2} style={[theme.typography.titleMd, { color: theme.colors.onSurface }]}>{item.title}</Text>
                   <Text numberOfLines={2} style={{ color: theme.colors.onSurfaceVariant }}>{rowDetails(item)}</Text>
+                  {renderElapsed(item)}
                   {renderProgress(item)}
                 </Pressable>
               )}

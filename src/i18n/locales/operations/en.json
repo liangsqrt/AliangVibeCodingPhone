@@ -81,6 +81,7 @@
     "timeDays": "{{count}}d ago"
   },
   "activity": {
+    "elapsed": "Elapsed {{value}}",
     "subagentDetails": "Open subagent reports",
     "deviceOffline": "Device offline",
     "title": "Task activity",

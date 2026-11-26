@@ -81,6 +81,7 @@
     "timeDays": "{{count}} 天前"
   },
   "activity": {
+    "elapsed": "已用时 {{value}}",
     "subagentDetails": "查看子 Agent 报告",
     "deviceOffline": "设备离线",
     "title": "任务活动",

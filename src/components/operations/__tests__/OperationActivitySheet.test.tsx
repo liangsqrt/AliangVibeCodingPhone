@@ -1,8 +1,8 @@
 import React from 'react';
-import { Text } from 'react-native';
+import { AppState, Text } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import type { Operation } from '../../../api/operations';
+import { operationElapsedLabel, type Operation } from '../../../api/operations';
 import { OperationActivitySheet } from '../OperationActivitySheet';
 
 const mockRefreshOperations = jest.fn();
@@ -68,4 +68,48 @@ test('shows measured progress, scopes the list to the current session, and opens
   pressButton(renderer, '打开会话');
   expect(onOpenSession).toHaveBeenCalledWith('s1');
   act(() => renderer.unmount());
+});
+
+test('displays elapsed time for unmeasured work and freezes it at completion', () => {
+  jest.useFakeTimers({ now: new Date('2026-11-26T00:00:05Z') });
+  const previousOperations = mockStore.operations;
+  const previousAppState = AppState.currentState;
+  AppState.currentState = 'active';
+  const active: Operation = { ...operation, progress: undefined, started_at: operation.updated_at };
+  mockStore.operations = [active];
+  const sheet = (open: boolean) => (
+    <SafeAreaProvider initialMetrics={{
+      frame: { x: 0, y: 0, width: 320, height: 640 },
+      insets: { top: 0, bottom: 0, left: 0, right: 0 },
+    }}>
+      <OperationActivitySheet open={open} onClose={jest.fn()} sessionId="s1" onOpenSession={jest.fn()} />
+    </SafeAreaProvider>
+  );
+  let renderer: TestRenderer.ReactTestRenderer | undefined;
+  try {
+    act(() => { renderer = TestRenderer.create(sheet(true)); });
+    expect(labels(renderer!.root)).toContain('已用时 00:05');
+    pressButton(renderer!, 'Measured build');
+    act(() => { jest.advanceTimersByTime(2000); });
+    expect(labels(renderer!.root)).toContain('已用时 00:07');
+
+    mockStore.operations = [{ ...active, phase: 'completed', finished_at: '2026-11-26T00:00:06Z' }];
+    act(() => renderer!.update(sheet(true)));
+    act(() => { jest.advanceTimersByTime(2000); });
+    expect(labels(renderer!.root)).toContain('已用时 00:06');
+  } finally {
+    if (renderer) act(() => renderer!.unmount());
+    mockStore.operations = previousOperations;
+    AppState.currentState = previousAppState;
+    jest.useRealTimers();
+  }
+});
+
+test('omits elapsed time for queued work and incomplete timestamps', () => {
+  const now = Date.parse('2026-11-26T01:02:03Z');
+  const running = { ...operation, started_at: operation.updated_at };
+  expect(operationElapsedLabel(running, now)).toBe('1:02:03');
+  expect(operationElapsedLabel({ ...running, phase: 'queued' }, now)).toBeUndefined();
+  expect(operationElapsedLabel({ ...running, started_at: '' }, now)).toBeUndefined();
+  expect(operationElapsedLabel({ ...running, phase: 'failed' }, now)).toBeUndefined();
 });
