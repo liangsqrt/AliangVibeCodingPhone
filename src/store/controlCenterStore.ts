@@ -1,3 +1,5 @@
+import { AppState } from 'react-native';
+import { platformTransport } from '../services/platformTransport';
 import { create } from 'zustand';
 import { shallow, useShallow } from 'zustand/shallow';
 import type { PreviewLink, VibeCodingRun, VibeStatus } from '../data/platformModels';
@@ -603,9 +605,16 @@ export const useControlCenterStore = create<ControlCenterState>()(
               }
               return;
 
-            case 'mobile.connected':
+            case 'mobile.connected': {
               set({ wsConnected: true });
+              // The WebSocket can open before the server finishes authentication.
+              // Renew again after the server confirms this socket is registered.
+              const sessionId = get().currentlyViewedSessionId;
+              if (sessionId && AppState.currentState === 'active') {
+                platformTransport.send({ type: 'presence.alive', viewed_session_id: sessionId });
+              }
               return;
+            }
 
             case 'device.updated': {
               const clientDevice = platformDeviceToClient(

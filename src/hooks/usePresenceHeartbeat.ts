@@ -35,11 +35,17 @@ export function usePresenceHeartbeat(): void {
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;
+    let announcedSessionId: string | undefined;
 
     const sendAlive = () => {
       // send() returns false (no-op) when the socket isn't open, so this is safe
       // to call before the platform is connected or after a disconnect.
-      platformTransport.send({ type: 'presence.alive' });
+      const sessionId = useControlCenterStore.getState().currentlyViewedSessionId;
+      platformTransport.send({
+        type: 'presence.alive',
+        ...(sessionId ? { viewed_session_id: sessionId } : {}),
+      });
+      announcedSessionId = sessionId;
     };
 
     const start = () => {
@@ -49,6 +55,10 @@ export function usePresenceHeartbeat(): void {
     };
 
     const stop = () => {
+      if (announcedSessionId) {
+        platformTransport.send({ type: 'presence.alive', viewed_session_id: null });
+        announcedSessionId = undefined;
+      }
       if (timer) {
         clearInterval(timer);
         timer = null;
@@ -87,7 +97,18 @@ export function usePresenceHeartbeat(): void {
     }
 
     const subscription = AppState.addEventListener('change', handleChange);
+    const unsubscribe = useControlCenterStore.subscribe((state, previous) => {
+      if (!timer || !state.wsConnected) return;
+      const id = state.currentlyViewedSessionId;
+      if (id && (id !== previous.currentlyViewedSessionId || !previous.wsConnected)) {
+        sendAlive();
+      } else if (!id && announcedSessionId) {
+        platformTransport.send({ type: 'presence.alive', viewed_session_id: null });
+        announcedSessionId = undefined;
+      }
+    });
     return () => {
+      unsubscribe();
       subscription.remove();
       stop();
     };

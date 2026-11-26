@@ -43,6 +43,8 @@ describe('usePresenceHeartbeat', () => {
     refreshFromServerMock.mockClear();
     useControlCenterStore.setState({
       serverMode: true,
+      wsConnected: true,
+      currentlyViewedSessionId: undefined,
       refreshFromServer: refreshFromServerMock,
     });
     jest.useFakeTimers();
@@ -60,6 +62,8 @@ describe('usePresenceHeartbeat', () => {
     jest.restoreAllMocks();
     useControlCenterStore.setState({
       serverMode: false,
+      wsConnected: false,
+      currentlyViewedSessionId: undefined,
       refreshFromServer: originalRefreshFromServer,
     });
     jest.useRealTimers();
@@ -119,6 +123,40 @@ describe('usePresenceHeartbeat', () => {
     act(() => {
       screen?.unmount();
     });
+  });
+
+  it('renews the viewed session and clears it on blur or background', () => {
+    let screen: ReactTestRenderer.ReactTestRenderer | undefined;
+    act(() => {
+      screen = ReactTestRenderer.create(<Probe />);
+    });
+    act(() => {
+      useControlCenterStore.setState({ currentlyViewedSessionId: 'session-a' });
+    });
+    const watching = { type: 'presence.alive', viewed_session_id: 'session-a' };
+    expect(sendMock).toHaveBeenLastCalledWith(watching);
+    act(() => jest.advanceTimersByTime(60_000));
+    expect(sendMock).toHaveBeenLastCalledWith(watching);
+
+    act(() => useControlCenterStore.setState({ wsConnected: false }));
+    sendMock.mockClear();
+    act(() => useControlCenterStore.setState({ wsConnected: true }));
+    expect(sendMock).toHaveBeenLastCalledWith(watching);
+
+    act(() => {
+      useControlCenterStore.setState({ currentlyViewedSessionId: undefined });
+    });
+    expect(sendMock).toHaveBeenLastCalledWith({ type: 'presence.alive', viewed_session_id: null });
+    act(() => useControlCenterStore.setState({ currentlyViewedSessionId: 'session-a' }));
+    act(() => emitAppState('background'));
+    expect(sendMock).toHaveBeenLastCalledWith({ type: 'presence.alive', viewed_session_id: null });
+    sendMock.mockClear();
+    act(() => jest.advanceTimersByTime(60_000));
+    expect(sendMock).not.toHaveBeenCalled();
+
+    act(() => emitAppState('active'));
+    expect(sendMock).toHaveBeenLastCalledWith(watching);
+    act(() => screen?.unmount());
   });
 
   it('does not refresh the server snapshot on initial foreground mount', () => {
