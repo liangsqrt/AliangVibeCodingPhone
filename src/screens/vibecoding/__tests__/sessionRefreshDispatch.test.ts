@@ -9,7 +9,24 @@
  *    TUI 内容是纯拉模式,该分支必须降级为 refreshLatest 强拉最新,
  *    否则手机永远拿不到 server 页缓存之外的新正文(S1)。
  */
-import { resolvePullToRefreshAction } from '../sessionRefreshDispatch';
+import { resolvePullToRefreshAction, shouldRevalidateViewedSession } from '../sessionRefreshDispatch';
+
+describe('shouldRevalidateViewedSession', () => {
+  it.each([
+    { id: 'ai_import_legacy', origin: 'phone' },
+    { id: 'ai_terminal', origin: 'tui' },
+    { id: 'ai_desktop', origin: 'dashboard' },
+    { id: 'ai_injected', origin: 'phone', executor: 'tui' },
+  ] as const)('checks the device for $id', run => {
+    expect(shouldRevalidateViewedSession(run)).toBe(true);
+  });
+
+  it('keeps server-owned and ordinary phone sessions on the normal path', () => {
+    expect(shouldRevalidateViewedSession(undefined)).toBe(false);
+    expect(shouldRevalidateViewedSession({ id: 'ai_phone', origin: 'phone' })).toBe(false);
+    expect(shouldRevalidateViewedSession({ id: 'ai_import_goal', purpose: 'goal', origin: 'tui' })).toBe(false);
+  });
+});
 
 describe('resolvePullToRefreshAction', () => {
   it('有更早历史且有服务端确认锚点时保留加载更早路径', () => {

@@ -47,7 +47,7 @@ import {
 import { AttachmentChips } from '../../components/vibecoding/AttachmentChips';
 import { SessionPreviewCard } from './SessionPreviewCard';
 import { revokePortMapping } from '../../api/portMappings';
-import { resolvePullToRefreshAction } from './sessionRefreshDispatch';
+import { resolvePullToRefreshAction, shouldRevalidateViewedSession } from './sessionRefreshDispatch';
 import { selectDraftAttachmentsCapability } from './draftAttachments';
 import { firstServerConfirmedMessage } from '../../utils/sessionCatchUp';
 import {
@@ -561,14 +561,27 @@ export const VibeCodingSessionScreen: React.FC = () => {
   const reconcileSessionApprovals = useControlCenterStore(
     state => state.reconcileSessionApprovals,
   );
+  const revalidateViewedSession = useCallback(() => {
+    if (!focusedSessionId) return false;
+    const state = useControlCenterStore.getState();
+    const run = state.vibeRuns.find(item => item.id === focusedSessionId);
+    if (!run || !shouldRevalidateViewedSession(run) ||
+        state.devices.find(item => item.id === run.deviceId)?.status === 'offline') {
+      return false;
+    }
+    void state.loadAgentSessionDetail(focusedSessionId, { revalidate: true }).catch(() => {
+      if (navigation.isFocused()) sessionCatchUp.refreshLatestCount();
+    });
+    return true;
+  }, [focusedSessionId, navigation, sessionCatchUp]);
   // 前台恢复对账(2026-11-01 RCA):锁屏解锁/后台切回时人停在会话屏,
   // navigation focus 不重触发——WS 离线期间错过的内容(回答/审批卡)没有
   // 任何一次元数据对账去补,页面静默停在旧状态。AppState 边沿触发同一
   // 入口:轻量对账自带水位不等 early-return 与失败冷却,重复触发零成本。
   useForegroundReconciliation(() => {
-    if (!focusedSessionId) return;
+    if (!focusedSessionId || !navigation.isFocused()) return;
     try {
-      sessionCatchUp.refreshLatestCount();
+      if (!revalidateViewedSession()) sessionCatchUp.refreshLatestCount();
     } catch {
       // Never let a foreground hiccup break rendering.
     }
@@ -584,40 +597,29 @@ export const VibeCodingSessionScreen: React.FC = () => {
       // so there is no transcript flicker, and its stale guard rejects the
       // response if newer live deltas have landed since.
       try {
-        // 水位重查先行:轻量元数据对账(缓存优先、不落后零请求),与下方的
-        // 时间启发式互补——数据比对是权威,时间启发式只兜 WS 长静默的场景。
-        sessionCatchUp.refreshLatestCount();
-      } catch {
-        // Never let a refresh hiccup break the focus marking below.
-      }
-      try {
-        const storeState = useControlCenterStore.getState();
-        const run = storeState.vibeRuns.find(r => r.id === focusedSessionId);
-        const now = Date.now();
-        const cooledDown =
-          now - (lastAutoRefreshAtRef.current[focusedSessionId] ?? 0) >=
-          AUTO_REFRESH_COOLDOWN_MS;
-        if (
-          run &&
-          cooledDown &&
-          isSessionSnapshotStale({
-            now,
-            status: run.status,
-            lastActivityMs: run.lastActivityMs,
-            lastViewedAt: run.lastViewedAt,
-            awayThresholdMs: FOCUS_AWAY_THRESHOLD_MS,
-            liveWindowMs: LIVE_TURN_WINDOW_MS,
-          })
-        ) {
-          lastAutoRefreshAtRef.current[focusedSessionId] = now;
-          void storeState
-            // Cache-first recovery shares the mount request and avoids forcing an
-            // agent round trip whenever a running conversation regains focus.
-            .loadAgentSessionDetail(focusedSessionId)
-            .catch(() => {
-              // Best-effort: live WS + the always-visible manual refresh
-              // button are the fallbacks. Cooldown still applies.
-            });
+        if (!revalidateViewedSession()) {
+          sessionCatchUp.refreshLatestCount();
+          const storeState = useControlCenterStore.getState();
+          const run = storeState.vibeRuns.find(r => r.id === focusedSessionId);
+          const now = Date.now();
+          const cooledDown =
+            now - (lastAutoRefreshAtRef.current[focusedSessionId] ?? 0) >=
+            AUTO_REFRESH_COOLDOWN_MS;
+          if (
+            run &&
+            cooledDown &&
+            isSessionSnapshotStale({
+              now,
+              status: run.status,
+              lastActivityMs: run.lastActivityMs,
+              lastViewedAt: run.lastViewedAt,
+              awayThresholdMs: FOCUS_AWAY_THRESHOLD_MS,
+              liveWindowMs: LIVE_TURN_WINDOW_MS,
+            })
+          ) {
+            lastAutoRefreshAtRef.current[focusedSessionId] = now;
+            void storeState.loadAgentSessionDetail(focusedSessionId).catch(() => {});
+          }
         }
       } catch {
         // Never let a refresh hiccup break the focus marking below.
@@ -631,7 +633,7 @@ export const VibeCodingSessionScreen: React.FC = () => {
       return () => {
         clearCurrentlyViewedSession(focusedSessionId);
       };
-    }, [focusedSessionId, markSessionViewed, clearCurrentlyViewedSession, reconcileSessionApprovals, sessionCatchUp]),
+    }, [focusedSessionId, markSessionViewed, clearCurrentlyViewedSession, reconcileSessionApprovals, revalidateViewedSession, sessionCatchUp]),
   );
   const updateAgentSession = useControlCenterStore(
     state => state.updateAgentSession,

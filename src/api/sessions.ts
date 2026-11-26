@@ -419,18 +419,20 @@ export const fetchAiSessionsPage = (options?: {
     `/api/ai/sessions?${cursorPageQuery(options)}`,
   );
 
+export type AiSessionDetailOptions = { refresh?: boolean; revalidate?: boolean };
+
 export const fetchAiSession = (
   sessionId: string,
-  options?: { refresh?: boolean },
+  options?: AiSessionDetailOptions,
 ): Promise<ServerAiSession> => {
-  const refresh = options?.refresh === true;
-  const key = `${sessionId}:${refresh ? 'refresh' : 'cached'}`;
+  const query = options?.refresh ? '?refresh=true' : options?.revalidate ? '?revalidate=true' : '';
+  const key = `${sessionId}:${query}`;
   const existing = aiSessionDetailRequests.get(key);
   if (existing) return existing;
   const request = (async () => {
     try {
       return await apiGet<ServerAiSession>(
-        `/api/ai/sessions/${sessionId}${refresh ? '?refresh=true' : ''}`,
+        `/api/ai/sessions/${sessionId}${query}`,
         // The detail GET may trigger a server→agent round trip: the server waits
         // up to 12s, so leave enough room for the in-band response.
         { timeoutMs: 15_000 },

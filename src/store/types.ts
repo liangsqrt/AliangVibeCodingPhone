@@ -13,6 +13,7 @@ import type {
   PlatformTransportEvent,
 } from '../services/platformTransport';
 import type { AiAttachmentMeta, AttachmentCapability } from '../api/attachments';
+import type { AiSessionDetailOptions } from '../api/sessions';
 import type { EffortProvider } from '../utils/modelIntensity';
 
 // --- Type definitions ---
@@ -683,7 +684,7 @@ export interface ControlCenterState {
    */
   loadAgentSessionDetail: (
     sessionId: string,
-    options?: { refresh?: boolean },
+    options?: AiSessionDetailOptions,
   ) => Promise<{ detailRefreshStatus?: string } | undefined>;
   /**
    * 把 AsyncStorage 缓存的 transcript 注入空内存 run(transcriptCache 水合,

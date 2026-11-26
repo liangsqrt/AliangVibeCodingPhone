@@ -37,6 +37,7 @@ import {
   sendAiSteer as apiSendAiSteer,
   terminateAiSession as apiTerminateAiSession,
   updateAiSession as apiUpdateAiSession,
+  type AiSessionDetailOptions,
   type ServerAiSession,
   type ServerAiMessagesPageResponse,
   type ServerTerminalCommand,
@@ -397,7 +398,7 @@ class PlatformTransport {
 
   async loadAiSession(
     sessionId: string,
-    options?: { refresh?: boolean },
+    options?: AiSessionDetailOptions,
   ): Promise<PlatformAiSessionSnapshot> {
     return fetchAiSession(sessionId, options);
   }

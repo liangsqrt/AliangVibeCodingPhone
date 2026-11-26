@@ -30,6 +30,21 @@ import { ApiResponseError, apiGet, apiPost } from '../src/api/client';
 const mockedApiGet = apiGet as jest.Mock;
 const mockedApiPost = apiPost as jest.Mock;
 
+it('requests a bounded view-time revalidation separately from cached and manual detail', async () => {
+  mockedApiGet.mockClear();
+  await Promise.all([
+    fetchAiSession('view-session', { revalidate: true }),
+    fetchAiSession('view-session', { revalidate: true }),
+    fetchAiSession('view-session'),
+    fetchAiSession('view-session', { refresh: true, revalidate: true }),
+  ]);
+  expect(mockedApiGet.mock.calls.map(([url]) => url)).toEqual([
+    '/api/ai/sessions/view-session?revalidate=true',
+    '/api/ai/sessions/view-session',
+    '/api/ai/sessions/view-session?refresh=true',
+  ]);
+});
+
 // Build a minimal but valid AI session snapshot for mapping tests. Only the
 // fields under test are varied per-case; everything else uses sane defaults so
 // serverAiSessionToVibeRun's many `??` fallbacks don't obscure the assertions.

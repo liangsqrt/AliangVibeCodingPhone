@@ -372,6 +372,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
     const isManualRefresh = options?.refresh === true;
     let serverSession = await platformTransport.loadAiSession(sessionId, {
       refresh: options?.refresh,
+      ...(options?.revalidate ? { revalidate: true } : {}),
     });
     // Auto-recovery for "agent returned fresh-but-empty for a session the server
     // knows has history" — the root cause of "open a conversation, it's blank
@@ -387,6 +388,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
       get().projects,
     );
     if (
+      !options?.revalidate &&
       shouldEscalateEmptyDetailToRefresh({
         transcriptLength: firstMapped.transcript.length,
         transcriptCount: firstMapped.transcriptCount ?? 0,

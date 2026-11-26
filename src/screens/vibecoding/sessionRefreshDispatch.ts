@@ -7,6 +7,16 @@
  * hasServerEarlierMessages 几乎恒为 true(服务端 transcript_count > 本地 0),
  * 实际仍被抢进加载更早分支,再在 store 层因无 before 锚点静默 no-op。
  */
+import type { VibeCodingRun } from '../../data/platformModels';
+
+export function shouldRevalidateViewedSession(
+  session: Pick<VibeCodingRun, 'id' | 'purpose' | 'origin' | 'executor'> | undefined,
+): boolean {
+  if (!session || session.purpose === 'goal') return false;
+  return session.id.startsWith('ai_import_') || session.origin === 'tui' ||
+    session.origin === 'dashboard' || session.executor === 'tui';
+}
+
 export type PullToRefreshAction = 'load-earlier' | 'refresh-latest';
 
 export function resolvePullToRefreshAction(input: {
