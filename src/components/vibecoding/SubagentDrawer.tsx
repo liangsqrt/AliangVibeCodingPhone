@@ -66,6 +66,12 @@ export const SubagentDrawer: React.FC<SubagentDrawerProps> = ({ open, event, onC
 
   // 打开时按需拉重字段（result 全文 + tools 轨迹）。event 为 null（已关闭）
   // 不拉；同 task_id 重开复用上一次结果（React state 随 event 切换重置）。
+  // 依赖收敛到 event 的关键字段而非 event 本身：两个调用方都以内联对象
+  // 字面量传 event（BackgroundTasksPanel.drawerEvent / ActivityBlock
+  // SubagentRows.drawerEvent），live 会话期间父层以 ≤5Hz 重渲染，若依赖
+  // event 引用则每次渲染都取消重发——开抽屉即变成 ~5 次/秒的请求风暴，
+  // loading 分支遮蔽正文造成 spinner 永久闪烁。phase 变化（running→终态）
+  // 仍触发重拉，让用户在抽屉开着时看到最终结果。
   useEffect(() => {
     if (!open || !event) return;
     let cancelled = false;
@@ -84,7 +90,8 @@ export const SubagentDrawer: React.FC<SubagentDrawerProps> = ({ open, event, onC
     return () => {
       cancelled = true;
     };
-  }, [open, event]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- event 是身份不稳定的内联对象，只认关键字段
+  }, [open, event?.sessionId, event?.taskId, event?.phase]);
 
   const panelStyle = useAnimatedStyle(() => ({ transform: [{ translateX: tx.value }] }));
 
