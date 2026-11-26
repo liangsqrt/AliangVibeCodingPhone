@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import { clearFirstAiTextReceipt } from '../utils/devFrameProbe';
 import { platformTransport } from '../services/platformTransport';
 import { useControlCenterStore } from '../store/controlCenterStore';
 
@@ -55,6 +56,7 @@ export function usePresenceHeartbeat(): void {
     };
 
     const stop = () => {
+      if (__DEV__) clearFirstAiTextReceipt();
       if (announcedSessionId) {
         platformTransport.send({ type: 'presence.alive', viewed_session_id: null });
         announcedSessionId = undefined;
@@ -98,6 +100,9 @@ export function usePresenceHeartbeat(): void {
 
     const subscription = AppState.addEventListener('change', handleChange);
     const unsubscribe = useControlCenterStore.subscribe((state, previous) => {
+      if (__DEV__ && state.currentlyViewedSessionId !== previous.currentlyViewedSessionId) {
+        clearFirstAiTextReceipt();
+      }
       if (!timer || !state.wsConnected) return;
       const id = state.currentlyViewedSessionId;
       if (id && (id !== previous.currentlyViewedSessionId || !previous.wsConnected)) {

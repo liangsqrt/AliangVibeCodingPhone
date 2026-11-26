@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useState } from 'react';
 import {
   Alert,
+  AppState,
   Platform,
   Pressable,
   StyleSheet,
@@ -22,6 +23,7 @@ import {
   relevantActivityDetailsEqual,
 } from '../../utils/activityRenderMemo';
 import { derivedApprovalPlanKey } from '../../utils/messageRendering';
+import { noteFirstAiTextCommit } from '../../utils/devFrameProbe';
 import { useToastStore } from '../../store/toastStore';
 import type { StructuredActivityEvent } from '../../data/platformModels';
 import type {
@@ -238,6 +240,13 @@ const TranscriptMessageListBase: React.FC<TranscriptMessageListProps> = ({
   // Render at most one bubble; the owning screen passes a single message.
   const items = message ? [message] : [];
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  useLayoutEffect(() => {
+    if (__DEV__ && sessionId && message?.role === 'assistant' &&
+        message.segments.length > 0 && AppState.currentState === 'active') {
+      noteFirstAiTextCommit(sessionId, message.sourceMessageIds);
+    }
+  }, [message, sessionId]);
 
   const hasActivity =
     Boolean(activitySessionId) &&

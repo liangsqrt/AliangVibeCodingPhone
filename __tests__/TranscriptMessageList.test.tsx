@@ -1,10 +1,11 @@
 import React from 'react';
 import ReactTestRenderer, { act } from 'react-test-renderer';
-import { Text, TouchableOpacity } from 'react-native';
+import { AppState, Text, TouchableOpacity } from 'react-native';
 import { ThemeContext } from '../src/theme/ThemeContext';
 import { utilityMinimalist } from '../src/theme/themes/utilityMinimalist';
 import { TranscriptMessageList } from '../src/components/vibecoding/TranscriptMessageList';
 import { parseMessageContentSegments } from '../src/utils/messageRendering';
+import { __resetDevFrameProbeForTests, noteFirstAiTextReceipt } from '../src/utils/devFrameProbe';
 import type { DisplayTranscriptMessage } from '../src/utils/agentTranscript';
 
 let currentRenderer: ReactTestRenderer.ReactTestRenderer | undefined;
@@ -55,6 +56,34 @@ const userMessage = (overrides: Partial<DisplayTranscriptMessage> = {}): Display
   segments: [{ id: 'seg1', kind: 'text', content: '帮我修个bug', blocks: [] }],
   sourceMessageIds: ['u1'],
   ...overrides,
+});
+
+it('samples the first text commit of the matching assistant bubble', () => {
+  __resetDevFrameProbeForTests();
+  const appState = AppState.currentState;
+  AppState.currentState = 'active';
+  const clock = jest.spyOn(performance, 'now').mockReturnValue(200);
+  const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+  try {
+    noteFirstAiTextReceipt({
+      sessionId: 's1', messageId: 'assistant-1', runId: 'run-1',
+      delta: 'First reply', eventSeq: 3, emittedAtMs: 100,
+    }, 100);
+    wrap(<TranscriptMessageList sessionId="s1" message={userMessage({
+      id: 'assistant-1',
+      sourceMessageIds: ['assistant-1'],
+      role: 'assistant',
+      segments: parseMessageContentSegments('assistant-1', 'First reply'),
+    })} />);
+    expect(log).toHaveBeenCalledWith(
+      '[PERF] ai-first-text run=run-1 event_seq=3 receive_to_commit_ms=100',
+    );
+  } finally {
+    AppState.currentState = appState;
+    clock.mockRestore();
+    log.mockRestore();
+    __resetDevFrameProbeForTests();
+  }
 });
 
 describe('TranscriptMessageList — 失败回合重试入口 (case B)', () => {

@@ -10,7 +10,7 @@ import {
   mapAiRunNotice,
 } from '../utils/aiRunNotice';
 import { routeTerminalOutputToEmulator } from '../services/terminalOutputRegistry';
-import { perfMark } from '../utils/devFrameProbe';
+import { noteFirstAiTextReceipt, perfMark } from '../utils/devFrameProbe';
 import {
   forgetTerminalGeometryFollow,
   isLocalTerminalResizeRecent,
@@ -572,6 +572,20 @@ export const useControlCenterStore = create<ControlCenterState>()(
         // log, and keep the connection alive for subsequent events.
         try {
           if (isAiStreamTransportEvent(transportEvent)) {
+            if (__DEV__ && transportEvent.type === 'ai.delta' &&
+                transportEvent.raw.agent_emitted_at_ms !== undefined &&
+                get().currentlyViewedSessionId === transportEvent.sessionId &&
+                AppState.currentState === 'active') {
+              noteFirstAiTextReceipt({
+                sessionId: transportEvent.sessionId,
+                messageId: transportEvent.messageId,
+                delta: transportEvent.delta,
+                channel: transportEvent.raw.channel,
+                runId: transportEvent.raw.run_id,
+                eventSeq: transportEvent.raw.event_seq,
+                emittedAtMs: transportEvent.raw.agent_emitted_at_ms,
+              });
+            }
             flushTerminalOutput();
             pushAiStreamEvent(transportEvent);
             return;

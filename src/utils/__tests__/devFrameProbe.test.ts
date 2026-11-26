@@ -3,6 +3,9 @@ import {
   GAP_THRESHOLD_MS,
   __resetDevFrameProbeForTests,
   perfMark,
+  noteFirstAiTextReceipt,
+  noteFirstAiTextCommit,
+  clearFirstAiTextReceipt,
   startDevFrameProbe,
 } from '../devFrameProbe';
 
@@ -48,6 +51,41 @@ describe('devFrameProbe', () => {
     expect(console.log).not.toHaveBeenCalled();
     // 每次巡检帧都重排程:首帧 + 亚阈帧 → 已注册 2 个执行回调,第 3 个在排程。
     expect(rafCallbacks.length).toBe(3);
+  });
+
+  it('logs the local delay once for the matching assistant bubble', () => {
+    const first = {
+      sessionId: 's1', messageId: 'm1', channel: 'assistant', delta: 'test text',
+      runId: 'r1', eventSeq: 7, emittedAtMs: 1_000,
+    };
+    noteFirstAiTextReceipt({ ...first, channel: 'stderr' }, 100);
+    noteFirstAiTextReceipt({ ...first, delta: ' ' }, 110);
+    noteFirstAiTextReceipt(first, 120);
+    noteFirstAiTextReceipt(first, 130);
+    noteFirstAiTextCommit('s2', ['m1'], 200);
+    noteFirstAiTextCommit('s1', ['placeholder'], 210);
+    expect(console.log).not.toHaveBeenCalled();
+
+    noteFirstAiTextCommit('s1', ['coalesced', 'm1'], 240);
+    noteFirstAiTextReceipt(first, 250);
+    noteFirstAiTextCommit('s1', ['m1'], 260);
+    expect(console.log).toHaveBeenCalledTimes(1);
+    expect(console.log).toHaveBeenCalledWith(
+      '[PERF] ai-first-text run=r1 event_seq=7 receive_to_commit_ms=120',
+    );
+  });
+
+  it('drops a pending sample when the view closes or the sample expires', () => {
+    const first = {
+      sessionId: 's1', messageId: 'm1', channel: 'assistant', delta: 'hello',
+      runId: 'r1', eventSeq: 7, emittedAtMs: 1_000,
+    };
+    noteFirstAiTextReceipt(first, 120);
+    clearFirstAiTextReceipt();
+    noteFirstAiTextCommit('s1', ['m1'], 150);
+    noteFirstAiTextReceipt({ ...first, runId: 'r2' }, 200);
+    noteFirstAiTextCommit('s1', ['m1'], 40_000);
+    expect(console.log).not.toHaveBeenCalled();
   });
 
   it('重复 start 是单例,不叠加巡检回调', () => {

@@ -25,11 +25,79 @@ export function perfMark(label: string): void {
   lastMarkAt = Date.now();
 }
 
+const FIRST_TEXT_MAX_AGE_MS = 30_000;
+const TIMING_ID = /^[a-zA-Z0-9_-]{1,160}$/;
+
+type FirstTextFrame = {
+  sessionId: string;
+  messageId?: string;
+  delta: string;
+  channel?: unknown;
+  runId?: unknown;
+  eventSeq?: unknown;
+  emittedAtMs?: unknown;
+};
+
+let firstTextReceipt: {
+  sessionId: string;
+  messageId: string;
+  runId: string;
+  eventSeq: number;
+  receivedAt: number;
+} | undefined;
+let lastMeasuredRun: string | undefined;
+
+/** Only the device's tagged first text frame is sampled. */
+export function noteFirstAiTextReceipt(frame: FirstTextFrame, receivedAt = performance.now()): void {
+  if (!__DEV__ || !frame.messageId || typeof frame.runId !== 'string' ||
+      !TIMING_ID.test(frame.runId) || frame.runId === lastMeasuredRun ||
+      frame.runId === firstTextReceipt?.runId || typeof frame.eventSeq !== 'number' ||
+      !Number.isSafeInteger(frame.eventSeq) || frame.eventSeq <= 0 ||
+      typeof frame.emittedAtMs !== 'number' || !Number.isSafeInteger(frame.emittedAtMs) ||
+      frame.emittedAtMs <= 0 ||
+      (frame.channel !== undefined && frame.channel !== 'assistant' && frame.channel !== 'stdout') ||
+      !frame.delta.trim()) return;
+  firstTextReceipt = {
+    sessionId: frame.sessionId,
+    messageId: frame.messageId,
+    runId: frame.runId,
+    eventSeq: frame.eventSeq,
+    receivedAt,
+  };
+}
+
+export function noteFirstAiTextCommit(
+  sessionId: string,
+  sourceMessageIds: readonly string[],
+  committedAt = performance.now(),
+): void {
+  const sample = firstTextReceipt;
+  if (!__DEV__ || !sample || sample.sessionId !== sessionId) return;
+  const elapsed = committedAt - sample.receivedAt;
+  if (elapsed < 0 || elapsed > FIRST_TEXT_MAX_AGE_MS) {
+    firstTextReceipt = undefined;
+    return;
+  }
+  if (!sourceMessageIds.includes(sample.messageId)) return;
+  firstTextReceipt = undefined;
+  lastMeasuredRun = sample.runId;
+  // eslint-disable-next-line no-console
+  console.log(
+    `[PERF] ai-first-text run=${sample.runId} event_seq=${sample.eventSeq} receive_to_commit_ms=${Math.round(elapsed)}`,
+  );
+}
+
+export function clearFirstAiTextReceipt(): void {
+  firstTextReceipt = undefined;
+}
+
 export function __resetDevFrameProbeForTests(): void {
   started = false;
   lastTickAt = 0;
   lastMark = 'app-start';
   lastMarkAt = 0;
+  clearFirstAiTextReceipt();
+  lastMeasuredRun = undefined;
 }
 
 /**
