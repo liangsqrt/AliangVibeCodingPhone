@@ -103,8 +103,8 @@ describe('realtime streaming batching', () => {
     store.handleTransportEvent(deltaEvent(' b'));
     store.handleTransportEvent(deltaEvent(' c'));
 
-    // Not applied yet — tokens are buffered, not written per-token.
-    expect(transcriptContent()).toBe('Hello');
+    // The first text is immediate; following tokens share the flush.
+    expect(transcriptContent()).toBe('Hello a');
 
     jest.advanceTimersByTime(DELTA_FLUSH_MS);
 
@@ -155,9 +155,9 @@ describe('realtime streaming batching', () => {
       store.handleTransportEvent(thinkingEvent('s2', index));
     }
 
-    expect(writes).toBe(0);
-    jest.advanceTimersByTime(DELTA_FLUSH_MS);
     expect(writes).toBe(1);
+    jest.advanceTimersByTime(DELTA_FLUSH_MS);
+    expect(writes).toBe(2);
     expect(useControlCenterStore.getState().vibeRuns[2]).toBe(untouchedRef);
     unsubscribe();
   });

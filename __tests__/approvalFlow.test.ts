@@ -344,7 +344,7 @@ describe('approval realtime flow', () => {
       vibeRuns: [run()],
     });
 
-  it('drops the pending approval when the server is unreachable (network error)', async () => {
+  it('keeps the pending approval retryable when the server is unreachable', async () => {
     seedPendingApproval();
     (platformTransport.respondApproval as jest.Mock).mockRejectedValue(
       new Error('Network request failed'),
@@ -352,7 +352,7 @@ describe('approval realtime flow', () => {
     await expect(
       useControlCenterStore.getState().resolveApproval('approval-1', 'approved'),
     ).rejects.toThrow('Network');
-    expect(useControlCenterStore.getState().approvals).toHaveLength(0);
+    expect(useControlCenterStore.getState().approvals[0]?.status).toBe('pending');
   });
 
   it('drops the pending approval on 404 (gone server-side)', async () => {
@@ -369,7 +369,7 @@ describe('approval realtime flow', () => {
   it('drops the pending approval on 409 (already resolved server-side)', async () => {
     seedPendingApproval();
     (platformTransport.respondApproval as jest.Mock).mockRejectedValue(
-      new ApiResponseError('already resolved', 409, 'already_resolved'),
+      new ApiResponseError('already resolved', 409, 'approval_already_resolved'),
     );
     await expect(
       useControlCenterStore.getState().resolveApproval('approval-1', 'approved'),
