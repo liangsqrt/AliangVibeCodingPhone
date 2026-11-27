@@ -170,28 +170,29 @@ describe('agentTranscript', () => {
       ),
     );
 
-    expect(segments).toHaveLength(3);
+    // 7eedbac 起 command-name+command-args 相邻簇合并为一张 Slash command 卡，
+    // 不再走内联 commandName/commandArgs 标签。
+    expect(segments).toHaveLength(5);
     expect(segments[0]).toMatchObject({
       kind: 'text',
-      content: 'Run npm test --watch now.',
-    });
-    if (segments[0].kind !== 'text') throw new Error('Expected text segment');
-    expect(segments[0].blocks[0]).toMatchObject({
-      kind: 'paragraph',
-      children: [
-        { kind: 'text', content: 'Run ' },
-        { kind: 'commandName', content: 'npm test' },
-        { kind: 'text', content: ' ' },
-        { kind: 'commandArgs', content: '--watch' },
-        { kind: 'text', content: ' now.' },
-      ],
+      content: 'Run',
     });
     expect(segments[1]).toMatchObject({
+      kind: 'callout',
+      title: 'Slash command',
+      tone: 'neutral',
+      content: '/npm test --watch',
+    });
+    expect(segments[2]).toMatchObject({
+      kind: 'text',
+      content: 'now.',
+    });
+    expect(segments[3]).toMatchObject({
       kind: 'callout',
       title: 'Command message',
       tone: 'info',
     });
-    expect(segments[2]).toMatchObject({
+    expect(segments[4]).toMatchObject({
       kind: 'callout',
       title: 'Command caveat',
       tone: 'warning',

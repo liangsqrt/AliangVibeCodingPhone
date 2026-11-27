@@ -1,6 +1,6 @@
 import React from 'react';
 import ReactTestRenderer, { act } from 'react-test-renderer';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeContext } from '../src/theme/ThemeContext';
 import { utilityMinimalist } from '../src/theme/themes/utilityMinimalist';
@@ -8,8 +8,8 @@ import { utilityMinimalist } from '../src/theme/themes/utilityMinimalist';
 /**
  * 会话审批挡位只读展示(approval_mode)。
  *
- * 概念区分(勿混淆):approval_mode 是**内核审批挡位**(''/'ask_all'/'bypass_all',
- * 手机端只读,undefined=默认推荐),≠ 已有的 approvalScheme(allow_all/ask_all/
+ * 概念区分(勿混淆):approval_mode 是**内核审批挡位**(''/'ask_all'/'bypass_all'/
+ * 'read_only',手机端可编辑,undefined=默认推荐),≠ 已有的 approvalScheme(allow_all/ask_all/
  * read_only 会话权限策略,创建页可编辑)。文案用 sessionSettings.approval* 新键,
  * 绝不复用 create.permissions.approval.*。
  */
@@ -120,9 +120,6 @@ const flatStyles = (node: ReactTestRenderer.ReactTestInstance) => {
   return flat;
 };
 
-const textsIn = (node: ReactTestRenderer.ReactTestInstance) =>
-  node.findAllByType(Text).map(t => String(t.props.children));
-
 const allTexts = (root: ReactTestRenderer.ReactTestRenderer) =>
   root.root.findAllByType(Text).map(t => String(t.props.children));
 
@@ -155,7 +152,9 @@ describe('SessionSettingsScreen 审批挡位只读区块(approval_mode ≠ appro
       flatStyles(askChip!).some(s => s.borderColor === theme.colors.outlineVariant),
     ).toBe(true);
 
-    // 只读:三个 chip 都是 View(非 TouchableOpacity),无 onPress/disabled 编辑位。
+    // 2026-11-15 手机侧可编辑(aad20b5):三个 chip 都是 TouchableOpacity 且带
+    // onPress 编辑位(写入 approvalDraft,保存时按 dirty 发 PATCH approval_mode)。
+    // approval_mode(内核挡位)仍 ≠ approvalScheme(会话权限策略),只是不再只读。
     for (const testID of [
       'approval-chip-default',
       'approval-chip-ask_all',
@@ -163,18 +162,9 @@ describe('SessionSettingsScreen 审批挡位只读区块(approval_mode ≠ appro
     ]) {
       const chip = approvalChipByTestID(root, testID);
       expect(chip).toBeTruthy();
-      expect(chip!.type).toBe(View);
-      expect(chip!.props.onPress).toBeUndefined();
-      expect(chip!.props.disabled).toBeUndefined();
+      expect(chip!.type).toBe(TouchableOpacity);
+      expect(typeof chip!.props.onPress).toBe('function');
     }
-    // 保险:全树没有任何 TouchableOpacity 承载审批文案(没有隐藏的编辑入口)。
-    const editableApproval = root.root
-      .findAllByType(TouchableOpacity)
-      .filter(node => {
-        const labels = textsIn(node);
-        return ['默认推荐', '每次询问', '放过所有'].some(l => labels.includes(l));
-      });
-    expect(editableApproval).toHaveLength(0);
   });
 
   it('approvalMode 缺省(undefined)→ 「默认推荐」chip 高亮', async () => {
@@ -214,11 +204,17 @@ describe('SessionSettingsScreen 审批挡位只读区块(approval_mode ≠ appro
     mockSession.approvalMode = undefined;
   });
 
-  it('只读 hint 在场(指向桌面端 composer 权限模式面板的说明文案)', async () => {
+  it('三端统一 hint 在场(手机切换、网页权限面板与内核同步生效)', async () => {
     const root = await wrap(<SessionSettingsScreen />);
     expect(allTexts(root)).toContain(
-      '审批挡位在桌面端聊天输入框的「权限模式」面板切换，手机端只读展示。',
+      '三端统一挡位：手机在此切换，网页权限面板与内核执行同步生效。',
     );
+    // 挡位语义 hint 也在场(read_only/ask_all/bypass_all/默认推荐说明)。
+    expect(
+      allTexts(root).some(
+        t => typeof t === 'string' && t.includes('下一回合生效') && t.includes('默认推荐=按项目策略执行'),
+      ),
+    ).toBe(true);
   });
 
   it('effectiveLabel 拼接含审批片段(undefined→默认推荐文案)', async () => {

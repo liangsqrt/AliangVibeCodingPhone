@@ -36,20 +36,27 @@ jest.mock('../src/native/AppVersion', () => ({
   ),
 }));
 
-const navGoBack = jest.fn();
-const navNavigate = jest.fn();
+const mockNavGoBack = jest.fn();
+const mockNavNavigate = jest.fn();
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ goBack: navGoBack, navigate: navNavigate }),
+  // TopAppBar 的返回键先问 canGoBack 再决定 goBack,与真实 navigation 同形。
+  useNavigation: () => ({ canGoBack: () => true, goBack: mockNavGoBack, navigate: mockNavNavigate }),
   useFocusEffect: (cb: () => void | (() => void)) => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    React.useEffect(() => cb(), []);
+    // factory 内不能引用模块顶层的 React(Babel hoist 后尚未初始化),按 Jest
+    // 规则在 factory 内 requireActual 懒加载。
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { useEffect } = jest.requireActual('react') as typeof import('react');
+    useEffect(() => cb(), []);
   },
   useRoute: () => ({ params: {} }),
 }));
 
 jest.mock('../src/services/localNotifications', () => ({
   displayNotification: jest.fn(),
-  getNotificationPermissionStatus: jest.fn(),
+  // SettingsScreen 在 focus 时 void getNotificationPermissionStatus().then(...),
+  // mock 必须返回 Promise,否则用例在挂载阶段就抛错。
+  getNotificationPermissionStatus: jest.fn(() => Promise.resolve('granted')),
   openNotificationSettings: jest.fn(),
   requestPermission: jest.fn(),
 }));
@@ -152,7 +159,7 @@ describe('AboutScreen', () => {
     let r!: ReactTestRenderer.ReactTestRenderer;
     r = renderIn(<AboutScreen />);
     await flush();
-    expect(navGoBack).not.toHaveBeenCalled();
+    expect(mockNavGoBack).not.toHaveBeenCalled();
 
     const version = r.root.findByProps({ testID: 'settings-app-version' });
     expect(String(version.props.children)).toContain('v1.0.6 (3)');
@@ -165,7 +172,7 @@ describe('AboutScreen', () => {
     await act(async () => {
       (back!.props as { onPress: () => void }).onPress();
     });
-    expect(navGoBack).toHaveBeenCalledTimes(1);
+    expect(mockNavGoBack).toHaveBeenCalledTimes(1);
   });
 
   it('manual check when up to date shows the success toast', async () => {
@@ -314,7 +321,7 @@ describe('SettingsScreen about entry', () => {
     await act(async () => {
       (entry.props as { onPress: () => void }).onPress();
     });
-    expect(navNavigate).toHaveBeenCalledWith('About');
+    expect(mockNavNavigate).toHaveBeenCalledWith('About');
     // 入口行右侧展示当前版本号。
     const texts = entry.findAllByType(Text).map(t => String(t.props.children));
     expect(texts).toContain('v1.0.6');

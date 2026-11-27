@@ -560,20 +560,6 @@ const HARNESS_COMMAND_CLUSTER = new RegExp(
   'gi',
 );
 
-const replaceHarnessCommandCluster = (content: string) =>
-  content.replace(HARNESS_COMMAND_CLUSTER, cluster => {
-    const name = harnessField(cluster, 'command-name');
-    if (!name) return cluster;
-    const args = harnessField(cluster, 'command-args');
-    const label = name.startsWith('/') ? name : `/${name}`;
-    return `\n<harness-command>${args ? `${label} ${args}` : label}</harness-command>\n`;
-  });
-
-const formatHarnessEnvelopes = (content: string) =>
-  replaceHarnessCommandCluster(
-    replaceBareTaskNotificationCluster(replaceTaskNotificationEnvelope(content)),
-  );
-
 /** v2 结构化卡随正文走 `<card-json>` 子标签（照 task-status 先例），
  * createCalloutSegment 拆进 segment.optionCard。 */
 const approvalRequestTag = (formatted: {
@@ -1543,6 +1529,25 @@ const collectMarkdownCodeRanges = (content: string) => {
 
   return ranges;
 };
+
+const replaceHarnessCommandCluster = (content: string) => {
+  // 命令簇改写发生在 codeRanges 之前，需自行跳过 ```/` 包裹的字面内容，
+  // 否则围栏里的 `<command-name>` 会被误改成 harness-command 卡。
+  const codeRanges = collectMarkdownCodeRanges(content);
+  return content.replace(HARNESS_COMMAND_CLUSTER, (cluster, offset) => {
+    if (isInsideRange(offset, codeRanges)) return cluster;
+    const name = harnessField(cluster, 'command-name');
+    if (!name) return cluster;
+    const args = harnessField(cluster, 'command-args');
+    const label = name.startsWith('/') ? name : `/${name}`;
+    return `\n<harness-command>${args ? `${label} ${args}` : label}</harness-command>\n`;
+  });
+};
+
+const formatHarnessEnvelopes = (content: string) =>
+  replaceHarnessCommandCluster(
+    replaceBareTaskNotificationCluster(replaceTaskNotificationEnvelope(content)),
+  );
 
 const tokenizeAgentMarkup = (rawContent: string): AgentMarkupToken[] => {
   const content = replaceAliangOptionsFences(formatHarnessEnvelopes(rawContent))

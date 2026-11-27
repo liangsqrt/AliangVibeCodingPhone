@@ -225,7 +225,7 @@ describe('双通道探测与选择', () => {
   it('防横跳锁:故障切到 nat0 后,primary 探测快得多也不得立即切回', async () => {
     await rememberPlatformServiceBaseUrl('warmup');
     // 先把 activeId 钉到 primary(顺带清掉前序用例遗留的锁)。
-    mockHealthByChannel({ primary: 0, nat0: 120 });
+    mockHealthByChannel({ primary: 0, nat0: 120, hk: 'fail' });
     await discoverReachableBaseUrl();
     expect(getActiveEndpointId()).toBe('primary');
 
@@ -236,7 +236,9 @@ describe('双通道探测与选择', () => {
     expect(getActiveEndpointId()).toBe('nat0');
 
     // primary 探测快得多(winner=primary),但锁内 effective 保持 nat0。
-    mockHealthByChannel({ primary: 0, nat0: 120 });
+    // hk 显式置 fail:本用例只验证 primary↔nat0 的锁语义;hk 是独立第三通道
+    // (0c156a6 引入),不置 fail 会以 0ms 假赢,把断言引到另一条语义上。
+    mockHealthByChannel({ primary: 0, nat0: 120, hk: 'fail' });
     const url = await discoverReachableBaseUrl();
     expect(url).toBe(NAT0_BASE_URL);
     expect(getActiveEndpointId()).toBe('nat0');
@@ -259,13 +261,16 @@ describe('双通道探测与选择', () => {
     expect(urlLocked).toBe(NAT0_BASE_URL);
     expect(getActiveEndpointId()).toBe('nat0');
 
-    // 把时钟推过 lockUntil(FLIP_LOCK_MS=5min,取 6min 余量)。
-    // 用 spy 前捕获的真 Date.now 做偏移基点,保留 TTFB 真实差值
-    // (primary 0ms vs nat0 120ms 的择优依据不受时钟平移影响)。
+    // 把时钟推过两道闸,primary 才能回到选举池并赢回:
+    //   ① 防横跳锁 FLIP_LOCK_MS=5min(锁内即使探测夺冠也不切回);
+    //   ② 数据面逐出 DATA_PLANE_EVICTION_MS=REPROBE_INTERVAL_MS=10min
+    //      (2026-11-03 通道逃逸修复:逐出期内根本不参与探测)。
+    // 取 11min 越过两者。用 spy 前捕获的真 Date.now 做偏移基点,保留 TTFB
+    // 真实差值(primary 0ms vs nat0 120ms 的择优依据不受时钟平移影响)。
     const realDateNow = Date.now.bind(Date);
     const clockSpy = jest
       .spyOn(Date, 'now')
-      .mockImplementation(() => realDateNow() + 6 * 60 * 1000);
+      .mockImplementation(() => realDateNow() + 11 * 60 * 1000);
     try {
       mockHealthByChannel({ primary: 0, nat0: 120, hk: 'fail' });
       const url = await discoverReachableBaseUrl();
