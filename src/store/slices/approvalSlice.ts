@@ -6,12 +6,14 @@ import {
   formatActivityLabel,
   MAX_RUN_EVENTS,
   mergeApprovalReconcile,
+  mergeVibeRunSnapshot,
+  mapSessionStatus,
   serverApprovalToClient,
   serverNotificationToClient,
   tail,
   upsertNotification,
 } from '../internals';
-import { ApiResponseError } from '../../api/client';
+import { ApiResponseError, getApiAuthToken } from '../../api/client';
 import {
   emptyHistoryPage,
   historyPageFromServer,
@@ -136,9 +138,13 @@ export const createApprovalSlice: StateCreator<ControlCenterState, [], [], Appro
   // focus/refresh reconciles again — the loop always closes, one cycle later.
   reconcileSessionApprovals: async sessionId => {
     if (!get().serverMode) return;
-    const incoming = (
-      await platformTransport.loadSessionApprovals(sessionId)
-    ).map(serverApprovalToClient);
+    const token = getApiAuthToken();
+    const response = await platformTransport.loadSessionApprovals(sessionId);
+    if (!get().serverMode || getApiAuthToken() !== token) return;
+    const session = Array.isArray(response) ? undefined : response.session;
+    if (session && session.session_id !== sessionId) return;
+    const incoming = (Array.isArray(response) ? response : response.approvals)
+      .map(serverApprovalToClient);
     set(state => {
       const pendingCount = (items: { status: string }[]) =>
         items.filter(item => item.status === 'pending').length;
@@ -147,6 +153,28 @@ export const createApprovalSlice: StateCreator<ControlCenterState, [], [], Appro
         items.filter(item => item.sessionId === sessionId);
       return {
         approvals,
+        vibeRuns: session ? state.vibeRuns.map(run => {
+          if (run.id !== sessionId || run.deviceId !== session.device_id) return run;
+          if (run.runStateVersion !== undefined &&
+              (session.run_state_version ?? -1) < run.runStateVersion) return run;
+          // Apply only control fields, leaving resident transcript and metadata in place.
+          return mergeVibeRunSnapshot(run, {
+            ...run,
+            status: mapSessionStatus(session.status),
+            phase: session.phase,
+            activeRunId: session.active_run_id,
+            latestRunId: session.latest_run_id,
+            runState: session.run_state,
+            runStateVersion: session.run_state_version,
+            executor: session.executor,
+            lastActivityMs: Date.parse(session.last_active_at ?? '') || 0,
+            transcriptCount: session.transcript_count ?? run.transcriptCount,
+            transcript: [],
+            events: [],
+            structuredEvents: [],
+            detailState: undefined,
+          });
+        }) : state.vibeRuns,
         approvalHistory: mergeHistoryById(
           incoming.filter(item => item.status !== 'pending'),
           state.approvalHistory,

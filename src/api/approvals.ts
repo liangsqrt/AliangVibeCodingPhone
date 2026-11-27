@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from './client';
+import type { ServerAiSession } from './sessions';
 import { cursorPageQuery, type ServerCursorPageResponse } from './pagination';
 
 export interface ServerApproval {
@@ -43,12 +44,24 @@ export interface ServerApproval {
 export const fetchApprovals = (): Promise<ServerApproval[]> =>
   apiGet<ServerApproval[]>('/api/approvals');
 
-// 会话级对账数据源:服务端返回该会话 pending+resolved 的全量真值(注释明写
-// 「手机端会话级审批对账」),不带分页时直接返回数组。手机端用它整体替换
-// 本地该会话的审批,清掉快照刷新/事件兜底复活出来的幽灵 pending。
-export const fetchSessionApprovals = (sessionId: string): Promise<ServerApproval[]> =>
-  apiGet<ServerApproval[]>(
-    `/api/approvals?session_id=${encodeURIComponent(sessionId)}`,
+export type ServerSessionControlState = Pick<
+  ServerAiSession,
+  'session_id' | 'device_id' | 'status' | 'phase' | 'active_run_id' |
+  'latest_run_id' | 'run_state' | 'run_state_version' | 'executor' |
+  'transcript_count' | 'last_active_at'
+>;
+
+type SessionControlResponse = {
+  session: ServerSessionControlState;
+  approvals: ServerApproval[];
+};
+
+// Older servers ignore include_session and still return the approval array.
+export const fetchSessionApprovals = (
+  sessionId: string,
+): Promise<ServerApproval[] | SessionControlResponse> =>
+  apiGet<ServerApproval[] | SessionControlResponse>(
+    `/api/approvals?session_id=${encodeURIComponent(sessionId)}&include_session=true`,
   );
 
 export const fetchApprovalsPage = (options?: {

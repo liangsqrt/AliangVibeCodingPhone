@@ -6,6 +6,7 @@ import {
   mergeApprovalReconcile,
   serverApprovalToClient,
 } from '../internals';
+import type { VibeCodingRun } from '../../data/platformModels';
 import { useControlCenterStore } from '../controlCenterStore';
 
 jest.mock('../../services/platformTransport', () => ({
@@ -186,6 +187,90 @@ describe('reconcileSessionApprovals', () => {
     expect(state.unreadNotificationsTotal).toBe(live.unreadNotificationsTotal);
     store.handleTransportEvent({ type: 'approval.requested', approval: baseApproval } as never);
     expect(useControlCenterStore.getState().approvals[0].status).toBe('approved');
+  });
+
+  it.each([false, true])('restores the viewed run and its approval on reconnect (resolved=%s)', async resolved => {
+    const status = resolved ? 'approved' : 'pending';
+    useControlCenterStore.setState({
+      vibeRuns: [{
+        id: 'ais_1', deviceId: 'd1', status: 'running', transcript: [], events: [],
+        structuredEvents: [], runState: 'running', runStateVersion: 3,
+      } as unknown as VibeCodingRun],
+    });
+    const session = {
+      session_id: 'ais_1', device_id: 'd1', status: resolved ? 'idle' : 'paused',
+      phase: resolved ? 'completed' : 'waiting_approval',
+      run_state: resolved ? 'completed' : 'waiting_approval',
+      run_state_version: 4,
+      last_active_at: '2026-10-30T01:00:00Z',
+      transcript_count: 0,
+    };
+    mockedLoadSessionApprovals.mockResolvedValue({
+      session, approvals: [server({ status })],
+    } as never);
+
+    await useControlCenterStore.getState().reconcileSessionApprovals('ais_1');
+    const state = useControlCenterStore.getState();
+    expect(state.approvals).toMatchObject([{ id: baseApproval.id, status }]);
+    expect(state.vibeRuns[0]).toMatchObject({
+      runState: session.run_state, runStateVersion: 4,
+    });
+  });
+
+  it('converges across 100 seeded recovery and live-event schedules', async () => {
+    let seed = 20261127;
+    const nextBits = () => {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+      return seed >>> 16;
+    };
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const resolved = (nextBits() & 1) === 1;
+      const settlesDuringRecovery = resolved && (nextBits() & 1) === 1;
+      const id = `approval-${attempt}`;
+      const pending = server({ id, approval_id: id });
+      const session = {
+        session_id: 'ais_1', device_id: 'd1', status: 'paused',
+        phase: 'waiting_approval', run_state: 'waiting_approval', run_state_version: 4,
+        transcript_count: 0, last_active_at: '2026-10-30T01:00:00Z',
+      } as const;
+      const completed = {
+        ...session, status: 'idle', phase: 'completed', run_state: 'completed', run_state_version: 5,
+      } as const;
+      useControlCenterStore.setState({
+        approvals: [], approvalHistory: [], notifications: [], events: [],
+        vibeRuns: [{
+          id: session.session_id, deviceId: 'd1', status: 'running', transcript: [],
+          events: [], structuredEvents: [], runState: 'running', runStateVersion: 3,
+        } as unknown as VibeCodingRun],
+      });
+
+      const snapshot = {
+        session: resolved && !settlesDuringRecovery ? completed : session,
+        approvals: [{ ...pending, status: resolved && !settlesDuringRecovery ? 'approved' : 'pending' } as const],
+      };
+      let finish!: (value: typeof snapshot) => void;
+      mockedLoadSessionApprovals.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+      const store = useControlCenterStore.getState();
+      const recovering = store.reconcileSessionApprovals('ais_1');
+      if (settlesDuringRecovery) {
+        store.handleTransportEvent({ type: 'approval.requested', approval: pending } as never);
+        store.handleTransportEvent({
+          type: 'notification.created',
+          notification: {
+            id: `resolved-${id}`, type: 'completed', title: 'Resolved', body: 'Approved',
+            read: true, approval_id: id, session_id: 'ais_1', created_at: '2026-10-30T01:00:00Z',
+          },
+        } as never);
+        store.handleTransportEvent({ type: 'ai.session.updated', session: completed } as never);
+      }
+      finish(snapshot);
+      await recovering;
+
+      const state = useControlCenterStore.getState();
+      expect(state.approvals.filter(approval => approval.status === 'pending').map(approval => approval.id))
+        .toEqual(resolved ? [] : [id]);
+      expect(state.vibeRuns[0].runState).toBe(resolved ? 'completed' : 'waiting_approval');
+    }
   });
 
   it('no-ops without a platform connection', async () => {
