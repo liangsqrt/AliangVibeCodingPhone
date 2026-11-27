@@ -73,7 +73,7 @@ import {
   enteredWaitingApproval,
   mapSessionStatus,
 } from './internals';
-import { createRealtimeSlice } from './slices/realtimeSlice';
+import { createRealtimeSlice, reconcileViewedSessionApprovals } from './slices/realtimeSlice';
 import { createTerminalSlice } from './slices/terminalSlice';
 import { createApprovalSlice } from './slices/approvalSlice';
 import { createAiSessionSlice } from './slices/aiSessionSlice';
@@ -628,6 +628,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
               const sessionId = get().currentlyViewedSessionId;
               if (sessionId && AppState.currentState === 'active') {
                 platformTransport.send({ type: 'presence.alive', viewed_session_id: sessionId });
+                reconcileViewedSessionApprovals(get);
               }
               return;
             }
@@ -1547,6 +1548,9 @@ export const useControlCenterStore = create<ControlCenterState>()(
 
             case 'approval.requested': {
               const approval = serverApprovalToClient(transportEvent.approval);
+              const state = get();
+              if (state.approvals.some(item => item.id === approval.id && item.status !== 'pending') ||
+                  state.approvalHistory.some(item => item.id === approval.id && item.status !== 'pending')) return;
               const approvalEvent = {
                 id: `approval-${approval.id}`,
                 type: 'approval' as const,

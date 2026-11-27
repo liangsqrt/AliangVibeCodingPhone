@@ -77,6 +77,18 @@ describe('mergeApprovalReconcile', () => {
     expect(merged.find(item => item.id === 'appr_old')?.status).toBe('denied');
     expect(merged.find(item => item.id === 'appr_new')?.status).toBe('pending');
   });
+
+  it('does not supersede a newer live pending card with an older response', () => {
+    const newer = serverApprovalToClient(server({
+      id: 'appr_live', created_at: '2026-10-30T01:00:00Z',
+    }));
+    const older = serverApprovalToClient(server({ id: 'appr_old' }));
+
+    const merged = mergeApprovalReconcile([newer], [older]);
+
+    expect(merged.find(item => item.id === newer.id)?.status).toBe('pending');
+    expect(merged.find(item => item.id === older.id)?.status).toBe('denied');
+  });
 });
 
 describe('reconcileSessionApprovals', () => {
@@ -120,7 +132,7 @@ describe('reconcileSessionApprovals', () => {
     });
     mockedLoadSessionApprovals.mockResolvedValue([
       server({ id: 'appr_a', status: 'pending' }),
-      server({ id: 'appr_b', status: 'pending' }),
+      server({ id: 'appr_b', status: 'pending', title: 'A different request' }),
     ]);
 
     await useControlCenterStore.getState().reconcileSessionApprovals('ais_1');
@@ -138,6 +150,42 @@ describe('reconcileSessionApprovals', () => {
     expect(
       useControlCenterStore.getState().approvalHistory.map(item => item.id),
     ).toContain('appr_ghost');
+  });
+
+  it('keeps a live resolution that arrives while recovery is in flight', async () => {
+    let finish!: (rows: PlatformApprovalSnapshot[]) => void;
+    mockedLoadSessionApprovals.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    useControlCenterStore.setState({
+      approvals: [serverApprovalToClient(baseApproval)],
+      unreadNotificationsTotal: 1,
+    });
+
+    const store = useControlCenterStore.getState();
+    const recovering = store.reconcileSessionApprovals('ais_1');
+    store.handleTransportEvent({
+      type: 'notification.created',
+      notification: {
+        id: 'resolved-notice',
+        type: 'completed',
+        title: 'Resolved',
+        body: 'Approved',
+        approval_id: baseApproval.id,
+        session_id: 'ais_1',
+        created_at: '2026-10-30T01:00:00Z',
+        read: true,
+      },
+    } as never);
+    const live = useControlCenterStore.getState();
+    expect(live.approvals[0].status).toBe('approved');
+
+    finish([baseApproval]);
+    await recovering;
+
+    const state = useControlCenterStore.getState();
+    expect(state.approvals).toEqual(live.approvals);
+    expect(state.unreadNotificationsTotal).toBe(live.unreadNotificationsTotal);
+    store.handleTransportEvent({ type: 'approval.requested', approval: baseApproval } as never);
+    expect(useControlCenterStore.getState().approvals[0].status).toBe('approved');
   });
 
   it('no-ops without a platform connection', async () => {

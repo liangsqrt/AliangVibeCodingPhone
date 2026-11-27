@@ -1460,17 +1460,9 @@ export const enteredWaitingApproval = (
 ): boolean => !isWaitingApprovalStatus(prev) && isWaitingApprovalStatus(next);
 
 /**
- * Approval reconcile merge (会话级对账). The server's session list is upserted
- * verbatim — the ghost fix works through this upsert alone: once the store
- * holds the server's authoritative resolved record, the session screen's
- * byId guard stops the event-fallback resurrection (the ghost itself is a
- * screen-memo artifact, never a store row, so nothing needs deleting here).
- * Local-only entries are kept: a reconcile response cannot repudiate an
- * approval it never carried (e.g. a request that raced the snapshot); a truly
- * dead local pending self-heals via its 404/409 on respond. Extra rule: while
- * the server reports a pending approval, any local same-ask pending is demoted
- * to denied (server supersede semantics — superseded duplicates) so the old
- * card can't be resurrected by fallbacks either.
+ * Merge approval reads with live state. Resolution is final for an approval
+ * ID, including when a pending response was captured before the resolution.
+ * For repeated questions, only the most recent pending card stays actionable.
  */
 export function mergeApprovalReconcile(
   existing: ApprovalRequest[],
@@ -1478,17 +1470,23 @@ export function mergeApprovalReconcile(
 ): ApprovalRequest[] {
   const byId = new Map(existing.map(item => [item.id, item]));
   for (const approval of incoming) {
-    byId.set(approval.id, approval);
-    if (approval.status !== 'pending') continue;
-    for (const [id, local] of byId) {
-      if (
-        id !== approval.id &&
-        local.status === 'pending' &&
-        sameAskApproval(local, approval)
-      ) {
-        byId.set(id, { ...local, status: 'denied' });
-      }
+    if (approval.status !== 'pending') {
+      byId.set(approval.id, approval);
+      continue;
     }
+    const previous = byId.get(approval.id);
+    if (previous && previous.status !== 'pending') continue;
+
+    const sameAsk = [...byId.values()].filter(local =>
+      local.id !== approval.id && local.status === 'pending' && sameAskApproval(local, approval),
+    );
+    const incomingCreatedAt = Date.parse(approval.createdAt);
+    if (sameAsk.some(local => Date.parse(local.createdAt) > incomingCreatedAt)) {
+      byId.set(approval.id, { ...approval, status: 'denied' });
+      continue;
+    }
+    byId.set(approval.id, approval);
+    for (const local of sameAsk) byId.set(local.id, { ...local, status: 'denied' });
   }
   return Array.from(byId.values());
 }

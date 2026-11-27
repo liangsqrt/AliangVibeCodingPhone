@@ -9,6 +9,8 @@ import type { ControlCenterState, RefreshOutcome } from '../types';
 import {
   dedupeUnifiedEvents,
   emptySessionData,
+  MAX_APPROVALS,
+  mergeApprovalReconcile,
   realtimeEventToUnifiedEvent,
   resolveRefreshAction,
   stateFromSnapshot,
@@ -25,16 +27,11 @@ const approvalReconcileInFlight = new Set<string>();
 const approvalReconcileLastAt = new Map<string, number>();
 
 /**
- * Pull the server's session-scoped approval truth (GET /api/approvals?session_id=
- * — pending + resolved) and upsert it over local state. Ghost-pending fix: the
- * snapshot only carries pending approvals, so every snapshot replace drops
- * resolved records and event fallbacks resurrect them as pending cards above
- * the composer. Reconciling inside the same state-replace path closes the loop
- * immediately instead of waiting for the next focus. Fire-and-forget: failures
- * are logged, never thrown into the snapshot replace flow, and the next
- * focus/refresh reconciles again.
+ * Reconcile the viewed session on reconnect, foreground entry, and snapshot
+ * replacement. A scoped request can restore approval cards before the full
+ * account snapshot finishes. Repeated triggers share the existing cooldown.
  */
-function reconcileViewedSessionApprovals(get: () => ControlCenterState) {
+export function reconcileViewedSessionApprovals(get: () => ControlCenterState) {
   const state = get();
   const sessionId = state.currentlyViewedSessionId;
   if (!sessionId || !state.serverMode) return;
@@ -108,6 +105,25 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 const loadSnapshotWithTimeout = () =>
   withTimeout(platformTransport.loadSnapshot(), SNAPSHOT_SYNC_TIMEOUT_MS, 'Platform snapshot refresh');
+
+function syncFromSnapshot(
+  snapshot: Awaited<ReturnType<typeof platformTransport.loadSnapshot>>,
+  state: ControlCenterState,
+  approvalsAtRequest: ControlCenterState['approvals'],
+) {
+  const next = stateFromSnapshot(
+    snapshot, state.vibeRuns, state.terminalSessions, state.terminalCommandHistory,
+  );
+  const knownDeviceIds = new Set(next.devices.map(device => device.id));
+  const requestRows = new Map(approvalsAtRequest.map(approval => [approval.id, approval]));
+  const liveRows = state.approvals.filter(approval =>
+    knownDeviceIds.has(approval.deviceId) &&
+    (approval.status !== 'pending' || requestRows.get(approval.id) !== approval),
+  );
+  const approvals = mergeApprovalReconcile(liveRows, next.approvals)
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+  return { ...next, approvals: approvals.slice(0, MAX_APPROVALS) };
+}
 
 // Connection lifecycle slice. Owns connection/freshness state + the
 // server-sync lifecycle. The cross-domain transport dispatcher
@@ -191,13 +207,9 @@ export const createRealtimeSlice: StateCreator<ControlCenterState, [], [], Realt
     });
 
     try {
+      const approvalsAtRequest = get().approvals;
       const snapshot = await loadSnapshotWithTimeout();
-      const nextState = stateFromSnapshot(
-        snapshot,
-        get().vibeRuns,
-        get().terminalSessions,
-        get().terminalCommandHistory,
-      );
+      const nextState = syncFromSnapshot(snapshot, get(), approvalsAtRequest);
 
       set({
         ...nextState,
@@ -280,15 +292,11 @@ export const createRealtimeSlice: StateCreator<ControlCenterState, [], [], Realt
     refreshInFlight = (async (): Promise<RefreshOutcome> => {
       try {
         const snapshotLoadStartedAt = Date.now();
+        const approvalsAtRequest = get().approvals;
         const snapshot = await loadSnapshotWithTimeout();
         perfMark(`snapshot:${Date.now() - snapshotLoadStartedAt}ms`);
         set(state => ({
-          ...stateFromSnapshot(
-            snapshot,
-            state.vibeRuns,
-            state.terminalSessions,
-            state.terminalCommandHistory,
-          ),
+          ...syncFromSnapshot(snapshot, state, approvalsAtRequest),
           lastSyncedAt: Date.now(),
           stale: false,
           lastConnectError: null,

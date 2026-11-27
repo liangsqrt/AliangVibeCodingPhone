@@ -142,8 +142,11 @@ export const createApprovalSlice: StateCreator<ControlCenterState, [], [], Appro
     set(state => {
       const pendingCount = (items: { status: string }[]) =>
         items.filter(item => item.status === 'pending').length;
+      const approvals = mergeApprovalReconcile(state.approvals, incoming);
+      const forSession = (items: ControlCenterState['approvals']) =>
+        items.filter(item => item.sessionId === sessionId);
       return {
-        approvals: mergeApprovalReconcile(state.approvals, incoming),
+        approvals,
         approvalHistory: mergeHistoryById(
           incoming.filter(item => item.status !== 'pending'),
           state.approvalHistory,
@@ -153,11 +156,8 @@ export const createApprovalSlice: StateCreator<ControlCenterState, [], [], Appro
         unreadNotificationsTotal: Math.max(
           0,
           state.unreadNotificationsTotal +
-            pendingCount(incoming) -
-            state.approvals.filter(
-              item =>
-                item.sessionId === sessionId && item.status === 'pending',
-            ).length,
+            pendingCount(forSession(approvals)) -
+            pendingCount(forSession(state.approvals)),
         ),
       };
     });

@@ -4,6 +4,7 @@ import { clearFirstAiTextReceipt } from '../utils/devFrameProbe';
 import { getActiveSocket } from '../services/websocket';
 import { platformTransport } from '../services/platformTransport';
 import { useControlCenterStore } from '../store/controlCenterStore';
+import { reconcileViewedSessionApprovals } from '../store/slices/realtimeSlice';
 
 // Interval for the app-level presence heartbeat. While the app is in the
 // foreground we send `presence.alive` so the server's terminal idle-timeout
@@ -87,6 +88,7 @@ export function usePresenceHeartbeat(): void {
         start();
         if (previousState !== 'active') {
           getActiveSocket()?.probeForegroundConnection();
+          reconcileViewedSessionApprovals(useControlCenterStore.getState);
           resync();
         }
       } else {

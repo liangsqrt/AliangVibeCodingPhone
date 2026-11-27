@@ -12,7 +12,7 @@ jest.mock('../../api/client', () => {
 });
 
 import { useControlCenterStore } from '../controlCenterStore';
-import { emptySessionData } from '../internals';
+import { emptySessionData, serverApprovalToClient } from '../internals';
 import { platformTransport } from '../../services/platformTransport';
 import { getApiAuthToken } from '../../api/client';
 
@@ -88,6 +88,50 @@ describe('refreshFromServer outcome', () => {
     expect(useControlCenterStore.getState().notificationHistoryPage).toMatchObject({
       nextBeforeCursor: 'older-cursor',
     });
+  });
+
+  test('keeps live approval changes while applying an in-flight snapshot', async () => {
+    const pending = {
+      id: 'approval-before',
+      approval_id: 'approval-before',
+      user_id: 'u1',
+      device_id: 'd1',
+      session_id: 's1',
+      kind: 'client_response',
+      title: 'Approve?',
+      summary: 'Waiting',
+      status: 'pending',
+      risk: 'low',
+      created_at: '2026-07-12T00:00:00Z',
+    } as const;
+    const newApproval = { ...pending, id: 'approval-live', approval_id: 'approval-live', title: 'Next approval' };
+    useControlCenterStore.setState({ approvals: [serverApprovalToClient(pending)] });
+    let finish!: (snapshot: Awaited<ReturnType<typeof platformTransport.loadSnapshot>>) => void;
+    mockedLoadSnapshot.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+
+    const store = useControlCenterStore.getState();
+    const refreshing = store.refreshFromServer();
+    store.handleTransportEvent({
+      type: 'notification.created',
+      notification: {
+        id: 'approved-during-refresh', approval_id: pending.id, session_id: 's1',
+        type: 'completed', title: 'Resolved', body: 'Approved', read: true,
+        created_at: '2026-07-12T00:00:02Z',
+      },
+    } as never);
+    store.handleTransportEvent({ type: 'approval.requested', approval: newApproval } as never);
+
+    finish({
+      ...emptySnapshot,
+      devices: [{ id: 'd1', deviceId: 'd1', userId: 'u1', name: 'Device', tools: [], capabilities: [], history: [], authorizedDirectories: [], projectIds: [], activePorts: [] }],
+      approvals: [pending],
+    } as never);
+    await refreshing;
+
+    expect(useControlCenterStore.getState().approvals).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'approval-before', status: 'approved' }),
+      expect.objectContaining({ id: 'approval-live', status: 'pending' }),
+    ]));
   });
 
   test('returns {ok:false, error} when the snapshot fetch fails', async () => {
