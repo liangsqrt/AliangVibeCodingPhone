@@ -1258,11 +1258,12 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
       throw new Error('Platform connection is required before sending a VibeCoding message.');
     }
     const currentRun = get().vibeRuns.find(run => run.id === sessionId);
-    const retry = currentRun?.transcript.find(item => item.id === options.retryMessageId);
-    if (options.retryMessageId && !retry?.sendReceipt) {
+    const retry = currentRun?.transcript.find(item => item.id === options.retryMessageId && item.failed);
+    if (options.retryMessageId && !retry) {
       pendingMessageSends.delete(sendKey);
       return;
     }
+    const replaying = Boolean(retry?.sendReceipt);
     const provider = normalizeProvider(
       currentRun?.effectiveModelConfig?.provider ?? currentRun?.provider,
     );
@@ -1316,12 +1317,12 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
       currentRun.sourceSessionId != null &&
       currentRun.status === 'running' &&
       currentRun.runStateVersion === undefined;
-    const sendAsSteer = !retry && shouldSendAsSteer(
+    const sendAsSteer = !replaying && shouldSendAsSteer(
       executionActive && (!tuiDrivenRun || canSteerExternal),
       provider,
       canSteerClaude || (tuiDrivenRun && canSteerExternal),
     );
-    if (!retry && shouldBlockConcurrentSend(turnActive, provider, sendAsSteer, waitingApproval)) {
+    if (!replaying && shouldBlockConcurrentSend(turnActive, provider, sendAsSteer, waitingApproval)) {
       pendingMessageSends.delete(sendKey);
       // 审批等待期全 provider 硬拦（2026-10-24 codex 审批锁）：新消息会顶掉
       // waiting_approval 并把待审批打翻成 denied。运行中的单进程 CLI 拦截
@@ -1336,7 +1337,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
     // message is tagged with `pending: true` so the merge logic (internals.ts)
     // can reconcile it with the server's copy even when IDs differ.
     const sendReceipt = retry?.sendReceipt ?? (
-      !sendAsSteer && !options.recallMessageId &&
+      !retry && !sendAsSteer && !options.recallMessageId &&
       get().platformFeatures.messageIdempotency &&
       steerDevice?.capabilities?.includes('ai_run_start_v3')
         ? { requestId: createId('send'), expectedModelConfigVersion: currentRun?.modelConfigVersion }
@@ -1348,18 +1349,20 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
       role: 'user' as const,
       mode,
       content: normalizedContent,
-      timestamp: new Date().toISOString(),
+      timestamp: retry?.timestamp ?? new Date().toISOString(),
       pending: true,
       ...(sendReceipt ? { sendReceipt } : {}),
       // 气泡立刻显示「这条消息带了什么」；服务端确认后同一字段原样合并。
       ...(attachments.length > 0 ? { attachments } : {}),
     };
-    if (!retry) set(state => {
+    if (!replaying) set(state => {
       let activeDeviceId = '';
       const vibeRuns = state.vibeRuns.map(run => {
         if (run.id !== sessionId) return run;
         activeDeviceId = run.deviceId;
-        const transcript = [...run.transcript, optimisticMessage];
+        const transcript = retry
+          ? run.transcript.map(item => item.id === optimisticId ? optimisticMessage : item)
+          : [...run.transcript, optimisticMessage];
         return {
           ...run,
           status: 'running' as VibeStatus,
@@ -1376,6 +1379,9 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
                 phase: 'running' as const,
                 optimisticRunPending: true,
                 optimisticRunBaseVersion: run.runStateVersion ?? -1,
+                turnDelivery: sendReceipt ? {
+                  messageId: optimisticId, deviceReceived: false, started: false,
+                } : undefined,
               }
             : {}),
           currentStep: sendAsSteer ? 'Steering current turn.' : 'Waiting for AI response.',
@@ -1453,7 +1459,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
           const responseIsNotOlder =
             response.run_state_version !== undefined &&
             response.run_state_version > (run.runStateVersion ?? -1) &&
-            (!run.optimisticRunPending || !retry);
+            (!run.optimisticRunPending || !replaying);
           const responseRunState = response.run_state ?? 'queued';
           const phase: NonNullable<VibeCodingRun['phase']> =
             responseRunState === 'completed' || responseRunState === 'cancelled'
@@ -1474,7 +1480,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
                 optimisticRunPending: false,
                 optimisticRunBaseVersion: undefined,
               }
-            : retry ? run : {
+            : replaying ? run : {
                 ...run,
                 optimisticRunPending: false,
                 optimisticRunBaseVersion: undefined,
@@ -1580,6 +1586,9 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
         }),
       }));
     } catch (error) {
+      if (sendReceipt && get().vibeRuns.find(run => run.id === sessionId)?.transcript.some(
+        item => item.id === optimisticId && !item.pending && !item.failed,
+      )) return;
       // KEEP the failed message as a client-only retryable bubble
       // (`failed: true`) instead of dropping it. The composer input is NOT
       // restored (handled by the screen), so the user's NEXT message can't
@@ -1606,7 +1615,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
             // or mark the already-accepted prompt as a failed send.
             return sendReceipt ? { ...run, transcript } : run;
           }
-          if (retry) return { ...run, transcript };
+          if (replaying) return { ...run, transcript };
           return {
             ...run,
             status: currentRun?.status ?? ('idle' as VibeStatus),
@@ -1615,6 +1624,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
             latestRunId: currentRun?.latestRunId,
             runState: currentRun?.runState,
             runStateVersion: currentRun?.runStateVersion,
+            turnDelivery: currentRun?.turnDelivery,
             optimisticRunPending: false,
             optimisticRunBaseVersion: undefined,
             currentStep: 'Failed to send. Tap the message to retry.',
@@ -1637,46 +1647,9 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
     // AgentMessage.mode is wider than the send API's ('voice' | 'text'); a
     // failed user bubble was originally dispatched as voice or text, so narrow.
     const mode: 'voice' | 'text' = failed.mode === 'voice' ? 'voice' : 'text';
-    if (failed.sendReceipt) {
-      try {
-        await get().appendAgentMessage(sessionId, content, mode, failed.attachments, {
-          retryMessageId: messageId,
-        });
-      } catch {
-        // Keep the same bubble and request for the next retry.
-      }
-      return;
-    }
-    // Drop the stale failed bubble, then dispatch a FRESH send (new optimistic
-    // bubble + HTTP). The retry never touches the composer input, so it cannot
-    // combine with other text; appendAgentMessage re-marks the new bubble
-    // `failed` on a repeat failure, keeping retry idempotent.
-    set(state => ({
-      vibeRuns: state.vibeRuns.map(item => {
-        if (item.id !== sessionId) return item;
-        const transcript = item.transcript.filter(message => message.id !== messageId);
-        return {
-          ...item,
-          transcript,
-          transcriptCount:
-            item.transcriptPage?.totalCount !== undefined
-              ? Math.max(
-                  item.transcriptPage.totalCount,
-                  countServerConfirmedMessages(transcript),
-                )
-              : Math.max(
-                  (item.transcriptCount ?? 1) - 1,
-                  countServerConfirmedMessages(transcript),
-                ),
-        };
-      }),
-    }));
-    try {
-      // 素材随消息一起重试：用户点的是「重发这条」，丢掉图片等于换了一条消息。
-      await get().appendAgentMessage(sessionId, content, mode, failed.attachments);
-    } catch {
-      // Failure is already reflected as a `failed` bubble by appendAgentMessage.
-    }
+    await get().appendAgentMessage(sessionId, content, mode, failed.attachments, {
+      retryMessageId: messageId,
+    });
   },
 
   dismissFailedMessage: (sessionId, messageId) => {

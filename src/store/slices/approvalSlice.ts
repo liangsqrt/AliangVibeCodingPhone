@@ -21,21 +21,10 @@ import {
   mergeHistoryById,
 } from '../historyPaging';
 
-/**
- * Whether a failed approval-resolve should DROP the local pending copy so it
- * doesn't linger on the phone. Drop when:
- *  - the server is unreachable / timed out (no HTTP response — a network-level
- *    error, not an ApiResponseError; "server gone" from the phone's view), OR
- *  - the approval no longer exists server-side (404/410) or was already resolved
- *    (409) — nothing left for the user to act on.
- * Keep + propagate for retryable server errors (5xx etc.) — the next
- * reconcileSessionApprovals pass re-syncs from the server's truth.
- */
-function shouldDropPendingApproval(error: unknown): boolean {
-  if (error instanceof ApiResponseError) {
-    return error.status === 404 || error.status === 410 || error.status === 409;
-  }
-  return true; // network / timeout — server unreachable
+function isApprovalUnavailable(error: unknown): boolean {
+  return error instanceof ApiResponseError && (
+    error.status === 404 || error.status === 410 || error.code === 'approval_already_resolved'
+  );
 }
 
 type ApprovalSlice = Pick<
@@ -226,11 +215,9 @@ export const createApprovalSlice: StateCreator<ControlCenterState, [], [], Appro
         await platformTransport.respondApproval(approvalId, decision, options),
       );
     } catch (error) {
-      // Server unreachable (network/timeout) OR approval gone server-side
-      // (404/410/409): drop the local pending copy so it doesn't linger. A
-      // reconnect refresh re-syncs the server's truth. Retryable errors (5xx)
-      // keep it pending; the error propagates so the UI can toast/retry.
-      if (shouldDropPendingApproval(error)) {
+      // Remove unavailable approvals. Connection failures keep the retry
+      // action available until realtime or reconciliation confirms an outcome.
+      if (isApprovalUnavailable(error)) {
         set(state => ({
           approvals: state.approvals.filter(item => item.id !== approvalId),
         }));

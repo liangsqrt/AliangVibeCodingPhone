@@ -170,6 +170,7 @@ import { usePublishedVibeRun } from './usePublishedVibeRun';
 import { useSessionRouteIdentity } from './useSessionRouteIdentity';
 import { useGoalControl, goalRequestErrorMessage } from './useGoalControl';
 import { useSessionHeader } from './useSessionHeader';
+import { turnDeliveryLabel } from '../../utils/agentTranscript';
 import type { ConversationTurn } from '../../utils/conversationTurns';
 import {
   createGoal,
@@ -1975,16 +1976,30 @@ export const VibeCodingSessionScreen: React.FC = () => {
     ) {
       return;
     }
+    const voiceSessionId = session?.id;
+    const previousMessageIds = new Set(session?.transcript.map(message => message.id));
     void appendUserMessage(draft, 'voice', pendingAssets)
       .then(sent => {
         if (sent) {
-          setVoiceDraft('');
+          setVoiceDraft(current => current.trim() === draft ? '' : current);
         }
       })
       .catch(error => {
-        // 与文本路径同口径：忙类拒绝走既有横幅给友好提示，其余静默（failed 气泡）。
+        const failedBubble = useControlCenterStore.getState().vibeRuns
+          .find(run => run.id === voiceSessionId)?.transcript.find(message =>
+            !previousMessageIds.has(message.id) && message.failed &&
+            message.mode === 'voice' && message.content === draft,
+          );
+        if (failedBubble) {
+          // 失败气泡已有原文和附件，从该气泡重试才能复用发送 ID。
+          setVoiceDraft(current => current.trim() === draft ? '' : current);
+          showToast(t(failedBubble.sendUnconfirmed
+            ? 'transcript.sendUnconfirmed'
+            : 'session.error.voiceSendFailed'), 'error');
+          return;
+        }
         const busyText = sessionBusyErrorText(error, t);
-        if (busyText) setDetailError(busyText);
+        setDetailError(busyText ?? sendFailureText(error, t));
         console.warn('[vibecoding] failed to send voice prompt', error);
       });
   };
@@ -2015,10 +2030,11 @@ export const VibeCodingSessionScreen: React.FC = () => {
     (messageId: string) => {
       if (!session || sendingMessage) return;
       void retryAgentMessage(session.id, messageId).catch(error => {
+        showToast(sessionBusyErrorText(error, t) ?? t('session.error.messageRetryFailed'), 'error');
         console.warn('[vibecoding] failed to retry message', error);
       });
     },
-    [session, sendingMessage, retryAgentMessage],
+    [session, sendingMessage, retryAgentMessage, showToast, t],
   );
 
   const handleDismissFailedMessage = useCallback(
@@ -2178,13 +2194,7 @@ export const VibeCodingSessionScreen: React.FC = () => {
     if (deviceOffline || resolvingApproval) return;
     setResolvingApproval({ id: approvalId, decision });
     void resolveApproval(approvalId, decision, options)
-      .catch(error => {
-        console.warn('[vibecoding] failed to resolve approval', error);
-        // 提交失败:保留本地选中态,用户零成本重试(graft ④)。
-        return;
-      })
-      .finally(() => {
-        setResolvingApproval(null);
+      .then(() => {
         if (decision === 'approved') {
           setApprovalSelections(current => {
             if (!current[approvalId]) return current;
@@ -2193,6 +2203,13 @@ export const VibeCodingSessionScreen: React.FC = () => {
             return next;
           });
         }
+      })
+      .catch(error => {
+        showToast(t('session.error.approvalSubmitUnconfirmed'), 'error');
+        console.warn('[vibecoding] failed to resolve approval', error);
+      })
+      .finally(() => {
+        setResolvingApproval(null);
       });
   };
 
@@ -2383,7 +2400,11 @@ export const VibeCodingSessionScreen: React.FC = () => {
     transcript: displayTranscriptSource,
     isDraft,
     t,
-  });  // failed 相位不再锁 composer:失败只是「上一轮没收到回复」,会话仍可继续——发新
+  });
+  const deliveryLabel = sessionPhase === 'running' && !deviceOffline
+    ? turnDeliveryLabel(session?.turnDelivery, transcript)
+    : undefined;
+  // failed 相位不再锁 composer:失败只是「上一轮没收到回复」,会话仍可继续——发新
   // 消息(或点失败消息旁的「重试」)会经服务端 claimAiSessionForRun 把 error 翻回
   // running。失败原因由底部气泡 failedLabel(「会话失败 · 网关502…」)承担,这里不阻断输入。
   // ── 用户主动关闭的 phone 族会话(2026-11-22 agentcore 发送静默失败 RCA)──────
@@ -4804,6 +4825,18 @@ export const VibeCodingSessionScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
           ) : null}
+          {deliveryLabel ? (
+            <Text
+              accessibilityLiveRegion="polite"
+              style={[
+                theme.typography.labelSm,
+                styles.turnDeliveryLabel,
+                { color: theme.colors.onSurfaceVariant },
+              ]}
+            >
+              {t(deliveryLabel)}
+            </Text>
+          ) : null}
           {/* 已选素材停在输入框正上方：发送前随时可删，发送成功才清空。 */}
           <AttachmentChips
             assets={pendingAssets}
@@ -4974,6 +5007,10 @@ const BackgroundTasksEntryBadge = React.memo(
 BackgroundTasksEntryBadge.displayName = 'BackgroundTasksEntryBadge';
 
 const styles = StyleSheet.create({
+  turnDeliveryLabel: {
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
   // 后台任务入口角标：钉在 agent 图标右上角的小计数。
   backgroundTasksBadgeDot: {
     position: 'absolute',

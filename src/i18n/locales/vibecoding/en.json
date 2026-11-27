@@ -480,6 +480,11 @@
       "collapse": "Collapse title",
       "expand": "Expand title"
     },
+    "delivery": {
+      "waiting": "Waiting for device receipt",
+      "received": "Delivered to device",
+      "started": "Run started · Waiting for a reply"
+    },
     "phase": {
       "notStarted": "Not started",
       "inProgress": "In progress",
@@ -507,6 +512,9 @@
       "retryHintBusy": "⏳ Gateway busy, retrying {{attempt}}/{{max}}",
       "sendBlocked": "The device is offline or the selected kernel is unavailable — nothing was sent. Confirm the device is online on its desktop app and retry.",
       "sendFailed": "Send failed: {{detail}}",
+      "voiceSendFailed": "Voice message failed to send.",
+      "messageRetryFailed": "Retry failed. You can try again from the message.",
+      "approvalSubmitUnconfirmed": "Couldn't confirm the approval submission. Check its status and try again.",
       "sendTimeout": "Send timed out: no response from the server in {{seconds}}s. Try again.",
       "sendNetwork": "Network request failed. Check your connection and retry.",
       "sendUnauthorized": "Your session expired. Sign in again and retry.",

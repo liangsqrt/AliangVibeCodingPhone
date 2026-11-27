@@ -12,6 +12,7 @@ import { useControlCenterStore } from '../controlCenterStore';
 jest.mock('../../services/platformTransport', () => ({
   platformTransport: {
     loadSessionApprovals: jest.fn(),
+    respondApproval: jest.fn(),
   },
 }));
 
@@ -102,6 +103,22 @@ describe('reconcileSessionApprovals', () => {
       notifications: [],
       unreadNotificationsTotal: 0,
     });
+  });
+
+  it('keeps the pending card after a lost submission response and lets the user retry', async () => {
+    useControlCenterStore.setState({ approvals: [serverApprovalToClient(baseApproval)] });
+    const respond = jest.mocked(platformTransport.respondApproval);
+    respond.mockRejectedValueOnce(new Error('Connection lost')).mockResolvedValueOnce(
+      server({ status: 'approved', resolved_at: '2026-10-30T01:00:00Z' }),
+    );
+    const store = useControlCenterStore.getState();
+    const options = { selectedOptionId: 'continue' };
+    await expect(store.resolveApproval(baseApproval.id, 'approved', options))
+      .rejects.toThrow('Connection lost');
+    expect(useControlCenterStore.getState().approvals[0].status).toBe('pending');
+    await store.resolveApproval(baseApproval.id, 'approved', options);
+    expect(respond).toHaveBeenLastCalledWith(baseApproval.id, 'approved', options);
+    expect(useControlCenterStore.getState().approvals[0].status).toBe('approved');
   });
 
   it('replaces the session approvals with server truth and syncs the unread delta', async () => {

@@ -807,6 +807,11 @@ export function serverAiSessionToVibeRun(
     latestRunId: session.latest_run_id,
     runState: session.run_state,
     runStateVersion: session.run_state_version,
+    turnDelivery: session.turn_pipeline ? {
+      messageId: session.turn_pipeline.message_id,
+      deviceReceived: Boolean(session.turn_pipeline.agent_received_at),
+      started: Boolean(session.turn_pipeline.agent_started_observed_at),
+    } : undefined,
     executor: session.executor,
     objective: session.objective ?? '',
     model,
@@ -1259,6 +1264,19 @@ export function mergeVibeRunSnapshot(
       ? existing.turnStartedAtMs ??
         (lastActivityMs > 0 ? lastActivityMs : undefined)
       : undefined);
+  let turnDelivery = existing.turnDelivery;
+  if (!rejectIncomingState && incoming.turnDelivery) {
+    turnDelivery = incoming.turnDelivery;
+    if (existing.turnDelivery?.messageId === turnDelivery.messageId) {
+      turnDelivery = {
+        ...turnDelivery,
+        deviceReceived: turnDelivery.deviceReceived || existing.turnDelivery.deviceReceived,
+        started: turnDelivery.started || existing.turnDelivery.started,
+      };
+    }
+  } else if (!rejectIncomingState && existing.latestRunId !== incoming.latestRunId) {
+    turnDelivery = undefined;
+  }
   return {
     ...existing,
     ...incoming,
@@ -1272,6 +1290,7 @@ export function mergeVibeRunSnapshot(
     latestRunId: rejectIncomingState ? existing.latestRunId : incoming.latestRunId,
     runState: mergedRunState,
     runStateVersion: mergedRunStateVersion,
+    turnDelivery,
     turnStartedAtMs,
     // executor 是老 server 不认识的字段：老服务端/部分载荷不带它时保留已知值，
     // 否则一次列表快照就能把「这是 TUI 运行」抹掉，composer 又会误开插话。

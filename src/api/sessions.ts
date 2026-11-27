@@ -174,6 +174,11 @@ export interface ServerAiSession {
     | 'cancelled'
     | 'timed_out';
   run_state_version?: number;
+  turn_pipeline?: {
+    message_id: string;
+    agent_received_at?: string;
+    agent_started_observed_at?: string;
+  };
   /**
    * 本会话最近一次运行的执行器（server 从 ai.run.started 事件派生）。
    * 'tui' = 注入到终端里已在跑的 Claude Code TUI，只能收文本、没有 steer

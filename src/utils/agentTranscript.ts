@@ -1,4 +1,4 @@
-import type { AgentMessage } from '../data/platformModels';
+import type { AgentMessage, VibeCodingRun } from '../data/platformModels';
 import {
   parseMessageContentSegments,
   type TranscriptCalloutSegment,
@@ -11,6 +11,26 @@ import {
 } from './messageRendering';
 
 export type TranscriptDisplayRole = 'user' | 'assistant' | 'system';
+
+export function turnDeliveryLabel(
+  delivery: VibeCodingRun['turnDelivery'],
+  messages: DisplayTranscriptMessage[],
+) {
+  if (!delivery) return undefined;
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role === 'user' && !message.failed) {
+      if (!message.sourceMessageIds.includes(delivery.messageId)) return undefined;
+      break;
+    }
+    if (message.role === 'assistant' && message.segments.some(segment =>
+      segment.kind === 'text' && segment.content.trim(),
+    )) return undefined;
+  }
+  if (delivery.started) return 'session.delivery.started';
+  if (delivery.deviceReceived) return 'session.delivery.received';
+  return 'session.delivery.waiting';
+}
 export type {
   TranscriptCalloutSegment,
   TranscriptFoldedSegment,

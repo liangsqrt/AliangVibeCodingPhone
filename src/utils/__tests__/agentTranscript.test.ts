@@ -1,4 +1,4 @@
-import { buildDisplayTranscript } from '../agentTranscript';
+import { buildDisplayTranscript, turnDeliveryLabel } from '../agentTranscript';
 import type { AgentMessage } from '../../data/platformModels';
 
 const msg = (over: Partial<AgentMessage> & { id: string; role: AgentMessage['role'] }): AgentMessage =>
@@ -7,6 +7,35 @@ const msg = (over: Partial<AgentMessage> & { id: string; role: AgentMessage['rol
     timestamp: '2026-08-05T10:00:00Z',
     ...over,
   }) as AgentMessage;
+
+describe('turnDeliveryLabel', () => {
+  const request = msg({ id: 'prompt', role: 'user' });
+  const display = buildDisplayTranscript([
+    msg({ id: 'previous', role: 'assistant', content: 'Previous reply' }),
+    request,
+    msg({ id: 'tool', role: 'system', content: 'Running test suite' }),
+  ]);
+  const delivery = { messageId: request.id, deviceReceived: false, started: false };
+
+  it('distinguishes the explicit device receipt from the launch signal', () => {
+    expect(turnDeliveryLabel(delivery, display)).toBe('session.delivery.waiting');
+    expect(turnDeliveryLabel({ ...delivery, deviceReceived: true }, display))
+      .toBe('session.delivery.received');
+    expect(turnDeliveryLabel({ ...delivery, started: true }, display))
+      .toBe('session.delivery.started');
+  });
+
+  it('clears when the current turn displays assistant text', () => {
+    const started = { ...delivery, started: true };
+    const firstText = buildDisplayTranscript([
+      request, msg({ id: 'reply', role: 'assistant', content: 'First visible reply' }),
+    ]);
+    expect(turnDeliveryLabel(started, firstText)).toBeUndefined();
+    expect(turnDeliveryLabel(started, buildDisplayTranscript([
+      msg({ id: 'other', role: 'user', content: 'Another turn' }),
+    ]))).toBeUndefined();
+  });
+});
 
 describe('buildDisplayTranscript — 阶段契约(display 合并)', () => {
   it('连续同角色字节相同 → 去重一条(乐观+快照双存的兜底)', () => {

@@ -480,6 +480,11 @@
       "collapse": "收起标题",
       "expand": "展开标题"
     },
+    "delivery": {
+      "waiting": "等待设备确认",
+      "received": "已送达设备",
+      "started": "已开跑 · 等待回复"
+    },
     "phase": {
       "notStarted": "待开始",
       "inProgress": "进行中",
@@ -507,6 +512,9 @@
       "retryHintBusy": "⏳ 网关繁忙，重试中 {{attempt}}/{{max}}",
       "sendBlocked": "设备当前离线或所选内核不可用，消息没有发出。请在桌面端确认设备在线后重试。",
       "sendFailed": "发送失败：{{detail}}",
+      "voiceSendFailed": "语音消息发送失败。",
+      "messageRetryFailed": "重试失败，可在原消息上再试。",
+      "approvalSubmitUnconfirmed": "审批提交结果待确认，请核对状态后重试。",
       "sendTimeout": "发送超时：服务端 {{seconds}} 秒未响应，请稍后重试。",
       "sendNetwork": "网络连接失败，请检查网络后重试。",
       "sendUnauthorized": "登录状态已过期，请重新登录后再试。",

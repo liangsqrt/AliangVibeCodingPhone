@@ -383,6 +383,11 @@ export interface VibeCodingRun {
     | 'timed_out';
   /** Monotonic server-owned state version; wall-clock timestamps never replace it. */
   runStateVersion?: number;
+  turnDelivery?: {
+    messageId: string;
+    deviceReceived: boolean;
+    started: boolean;
+  };
   /**
    * 本会话最近一次运行的执行器（server 从 ai.run.started 派生）。
    * 'tui' = 注入终端里已在跑的 Claude Code TUI：只能收文本，没有 steer

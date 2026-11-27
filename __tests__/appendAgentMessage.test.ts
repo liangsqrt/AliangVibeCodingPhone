@@ -1,7 +1,7 @@
 import { useControlCenterStore } from '../src/store/controlCenterStore';
 import { platformTransport } from '../src/services/platformTransport';
 import type { VibeCodingRun } from '../src/data/platformModels';
-import { mergeAgentMessages } from '../src/store/internals';
+import { mergeAgentMessages, mergeVibeRunSnapshot } from '../src/store/internals';
 
 jest.mock('../src/services/platformTransport', () => ({
   platformTransport: {
@@ -146,7 +146,7 @@ describe('appendAgentMessage', () => {
     expect(firstArgs[6]).toEqual(expect.any(String));
     expect(firstArgs[4]).toEqual(attachments);
 
-    await store.retryAgentMessage('s1', failed.id);
+    await expect(store.retryAgentMessage('s1', failed.id)).rejects.toThrow('Still offline');
     expect(send.mock.calls[1]).toEqual(firstArgs);
     expect(useControlCenterStore.getState().vibeRuns[0].transcript.at(-1)).toMatchObject({
       id: failed.id, failed: true, sendUnconfirmed: true,
@@ -165,6 +165,20 @@ describe('appendAgentMessage', () => {
     const failed = { ...sent, failed: true, sendUnconfirmed: true, sendReceipt: { requestId: 'send-fixture' } };
     expect(mergeAgentMessages([previous, failed], [previous])).toEqual([previous, failed]);
     expect(mergeAgentMessages([previous, failed], [previous, sent])).toEqual([previous, sent]);
+  });
+
+  it('keeps receipt and start signals for the same run across older snapshots', () => {
+    const delivery = { messageId: 'accepted', deviceReceived: true, started: true };
+    const current = {
+      ...run(), status: 'running' as const, runState: 'running' as const,
+      runStateVersion: 4, latestRunId: 'run-1', turnDelivery: delivery,
+    };
+    const delayed = { ...delivery, deviceReceived: false, started: false };
+    expect(mergeVibeRunSnapshot(current, { ...current, turnDelivery: delayed }).turnDelivery)
+      .toEqual(delivery);
+    expect(mergeVibeRunSnapshot(current, {
+      ...current, runStateVersion: 5, latestRunId: 'run-2', turnDelivery: undefined,
+    }).turnDelivery).toBeUndefined();
   });
 
   it('binds a new turn to the model config version visible when Send is pressed', async () => {
