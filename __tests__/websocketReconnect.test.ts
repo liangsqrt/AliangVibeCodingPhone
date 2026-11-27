@@ -22,6 +22,7 @@ jest.mock('../src/services/commandGenEvents', () => ({
 }));
 
 import { MobileWebSocket } from '../src/services/websocket';
+import { AppState } from 'react-native';
 import { refreshSession } from '../src/api/sessionAuth';
 import { getApiAuthToken } from '../src/api/client';
 import {
@@ -177,6 +178,28 @@ describe('MobileWebSocket foreground liveness probe', () => {
       expect(FakeWebSocket.urls).toHaveLength(1);
     } finally {
       socket.disconnect();
+    }
+  });
+
+  it('detects prolonged foreground silence within ten seconds', async () => {
+    const state = AppState.currentState;
+    AppState.currentState = 'active';
+    jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+    const { socket, connection } = await connect();
+    try {
+      await jest.advanceTimersByTimeAsync(3000);
+      expect(connection.sent).toHaveLength(1);
+      await jest.advanceTimersByTimeAsync(5000);
+      connection.onmessage!({ data: JSON.stringify({ type: 'ai.session.updated' }) });
+      await jest.advanceTimersByTimeAsync(1000);
+      expect(FakeWebSocket.urls).toHaveLength(1);
+      // The application frame confirmed the original channel; only the next
+      // unanswered heartbeat is evidence for switching it.
+      await jest.advanceTimersByTimeAsync(6000);
+      expect(FakeWebSocket.urls).toHaveLength(2);
+    } finally {
+      socket.disconnect();
+      AppState.currentState = state;
     }
   });
 });

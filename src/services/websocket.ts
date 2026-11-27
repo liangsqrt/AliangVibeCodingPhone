@@ -1,3 +1,4 @@
+import { AppState, type NativeEventSubscription } from 'react-native';
 import {
   getPlatformServiceBaseUrl,
   reportChannelFailure,
@@ -25,6 +26,7 @@ interface MobileWebSocketOptions {
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 const HEARTBEAT_INTERVAL_MS = 25000;
+const FOREGROUND_HEARTBEAT_INTERVAL_MS = 3000;
 // Force a reconnect after this many consecutive heartbeat pings go unanswered.
 // The server replies to `{"type":"ping"}` with `{"type":"pong"}` (and to
 // `presence.alive` with `presence.ack`); a missed reply means the socket is
@@ -47,6 +49,7 @@ export class MobileWebSocket {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatAppState: NativeEventSubscription | null = null;
   private intentionalClose = false;
   // Set when the server closed the socket over an auth rejection (1008 +
   // token/auth reason). Stops the reconnect loop — a dead token would otherwise
@@ -192,13 +195,12 @@ export class MobileWebSocket {
       try {
         const parsed = JSON.parse(event.data as string) as Record<string, unknown>;
         if (typeof parsed?.type !== 'string') return;
-        if (this.foregroundProbeTimer !== undefined) this.markAlive();
+        this.markAlive();
         // Liveness acks: the server replies to our heartbeat `ping` with `pong`
         // (and to `presence.alive` with `presence.ack`). Both prove the socket is
         // carrying traffic, so they clear the half-open detector. They're infra,
         // not domain events — never forward them to the store handler.
         if (parsed.type === 'pong' || parsed.type === 'presence.ack') {
-          this.markAlive();
           return;
         }
         // Transient command-generation live-loop timeline. This is a parallel,
@@ -299,9 +301,19 @@ export class MobileWebSocket {
 
   private startHeartbeat(): void {
     this.stopHeartbeat();
-    this.awaitingPong = false;
-    this.heartbeatMisses = 0;
-    this.heartbeatTimer = setInterval(() => {
+    const schedule = (active: boolean) => {
+      if (this.heartbeatTimer !== null) clearInterval(this.heartbeatTimer);
+      this.awaitingPong = false;
+      this.heartbeatMisses = 0;
+      const misses = active ? 2 : HEARTBEAT_MAX_MISSES;
+      const interval = active ? FOREGROUND_HEARTBEAT_INTERVAL_MS : HEARTBEAT_INTERVAL_MS;
+      this.heartbeatTimer = setInterval(() => this.heartbeat(misses), interval);
+    };
+    schedule(AppState.currentState === 'active');
+    this.heartbeatAppState = AppState.addEventListener('change', state => schedule(state === 'active'));
+  }
+
+  private heartbeat(maxMisses: number): void {
       const socket = this.ws;
       if (!socket || socket.readyState !== WebSocket.OPEN ||
           this.foregroundProbeTimer !== undefined) return;
@@ -315,7 +327,7 @@ export class MobileWebSocket {
       } else {
         this.heartbeatMisses = 0;
       }
-      if (this.heartbeatMisses >= HEARTBEAT_MAX_MISSES) {
+      if (this.heartbeatMisses >= maxMisses) {
         this.forceReconnect('liveness_timeout');
         return;
       }
@@ -325,7 +337,6 @@ export class MobileWebSocket {
       } catch {
         // A failed send surfaces as a liveness miss on the next beat.
       }
-    }, HEARTBEAT_INTERVAL_MS);
   }
 
   private markAlive(): void {
@@ -355,6 +366,8 @@ export class MobileWebSocket {
   }
 
   private stopHeartbeat(): void {
+    this.heartbeatAppState?.remove();
+    this.heartbeatAppState = null;
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
