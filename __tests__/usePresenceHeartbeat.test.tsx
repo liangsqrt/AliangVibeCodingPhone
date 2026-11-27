@@ -14,6 +14,9 @@ const sendMock = platformTransport.send as jest.Mock;
 const originalRefreshFromServer =
   useControlCenterStore.getState().refreshFromServer;
 const refreshFromServerMock = jest.fn().mockResolvedValue(undefined);
+const originalRefreshOperations =
+  useControlCenterStore.getState().refreshOperations;
+const refreshOperationsMock = jest.fn().mockResolvedValue(undefined);
 
 type ChangeHandler = (state: string) => void;
 let changeHandlers: ChangeHandler[] = [];
@@ -41,11 +44,13 @@ describe('usePresenceHeartbeat', () => {
     changeHandlers = [];
     sendMock.mockClear();
     refreshFromServerMock.mockClear();
+    refreshOperationsMock.mockClear();
     useControlCenterStore.setState({
       serverMode: true,
       wsConnected: true,
       currentlyViewedSessionId: undefined,
       refreshFromServer: refreshFromServerMock,
+      refreshOperations: refreshOperationsMock,
     });
     jest.useFakeTimers();
     jest.clearAllTimers();
@@ -65,6 +70,7 @@ describe('usePresenceHeartbeat', () => {
       wsConnected: false,
       currentlyViewedSessionId: undefined,
       refreshFromServer: originalRefreshFromServer,
+      refreshOperations: originalRefreshOperations,
     });
     jest.useRealTimers();
   });
@@ -123,6 +129,44 @@ describe('usePresenceHeartbeat', () => {
     act(() => {
       screen?.unmount();
     });
+  });
+
+  it('re-pulls task operations on background→active so missed terminal outcomes are caught up', () => {
+    let screen: ReactTestRenderer.ReactTestRenderer | undefined;
+    act(() => {
+      screen = ReactTestRenderer.create(<Probe />);
+    });
+    // Initial foreground mount mirrors the initial connect, which already
+    // pulls the operations snapshot — no extra pull.
+    expect(refreshOperationsMock).not.toHaveBeenCalled();
+
+    // Backgrounding alone pulls nothing.
+    act(() => emitAppState('background'));
+    expect(refreshOperationsMock).not.toHaveBeenCalled();
+
+    // The background→active hop is the only recovery path when RN keeps the
+    // socket "connected" across suspension (no reconnect => no operations
+    // refresh): pull the operations feed once alongside the snapshot refresh.
+    act(() => emitAppState('active'));
+    expect(refreshOperationsMock).toHaveBeenCalledTimes(1);
+    expect(refreshFromServerMock).toHaveBeenCalledTimes(1);
+
+    act(() => screen?.unmount());
+  });
+
+  it('skips the task-operations catch-up when not in server mode', () => {
+    act(() => {
+      useControlCenterStore.setState({ serverMode: false });
+    });
+    let screen: ReactTestRenderer.ReactTestRenderer | undefined;
+    act(() => {
+      screen = ReactTestRenderer.create(<Probe />);
+    });
+    act(() => emitAppState('background'));
+    act(() => emitAppState('active'));
+    expect(refreshOperationsMock).not.toHaveBeenCalled();
+
+    act(() => screen?.unmount());
   });
 
   it('renews the viewed session and clears it on blur or background', () => {

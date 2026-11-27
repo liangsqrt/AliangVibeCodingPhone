@@ -89,6 +89,7 @@
     "back": "返回任务列表",
     "updated": "更新于 {{value}}",
     "openSession": "打开会话",
+    "shellStopScope": "会话中的停止按钮会结束整个回合。",
     "all": "全部任务",
     "active": "进行中",
     "empty": "暂无任务。",

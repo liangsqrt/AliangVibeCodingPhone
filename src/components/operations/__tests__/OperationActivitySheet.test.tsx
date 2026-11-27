@@ -75,7 +75,10 @@ test('displays elapsed time for unmeasured work and freezes it at completion', (
   const previousOperations = mockStore.operations;
   const previousAppState = AppState.currentState;
   AppState.currentState = 'active';
-  const active: Operation = { ...operation, progress: undefined, started_at: operation.updated_at };
+  const active: Operation = {
+    ...operation, kind: 'shell', source_kind: 'ai_progress',
+    progress: undefined, started_at: operation.updated_at,
+  };
   mockStore.operations = [active];
   const sheet = (open: boolean) => (
     <SafeAreaProvider initialMetrics={{
@@ -90,6 +93,7 @@ test('displays elapsed time for unmeasured work and freezes it at completion', (
     act(() => { renderer = TestRenderer.create(sheet(true)); });
     expect(labels(renderer!.root)).toContain('已用时 00:05');
     pressButton(renderer!, 'Measured build');
+    expect(labels(renderer!.root)).toContain('会话中的停止按钮会结束整个回合。');
     act(() => { jest.advanceTimersByTime(2000); });
     expect(labels(renderer!.root)).toContain('已用时 00:07');
 
@@ -97,6 +101,7 @@ test('displays elapsed time for unmeasured work and freezes it at completion', (
     act(() => renderer!.update(sheet(true)));
     act(() => { jest.advanceTimersByTime(2000); });
     expect(labels(renderer!.root)).toContain('已用时 00:06');
+    expect(labels(renderer!.root)).not.toContain('会话中的停止按钮会结束整个回合。');
   } finally {
     if (renderer) act(() => renderer!.unmount());
     mockStore.operations = previousOperations;

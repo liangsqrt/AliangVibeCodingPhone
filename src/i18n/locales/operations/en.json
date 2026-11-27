@@ -89,6 +89,7 @@
     "back": "Back to tasks",
     "updated": "Updated {{value}}",
     "openSession": "Open conversation",
+    "shellStopScope": "Stop in the conversation ends the entire turn.",
     "all": "All tasks",
     "active": "Active",
     "empty": "No tasks to show.",

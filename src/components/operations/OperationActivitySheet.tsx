@@ -133,6 +133,9 @@ export function OperationActivitySheet({ open, onClose, sessionId, initialSource
             )}
             {selected.message ? <Text style={{ color: theme.colors.onSurface }}>{selected.message}</Text> : null}
             {selected.error_code ? <Text style={{ color: theme.colors.error }}>{selected.error_code}</Text> : null}
+            {selected.kind === 'shell' && selected.source_kind === 'ai_progress' && isActiveOperation(selected) && (
+              <Text style={{ color: theme.colors.onSurfaceVariant }}>{t('activity.shellStopScope')}</Text>
+            )}
             <Text style={{ color: theme.colors.onSurfaceVariant }}>
               {t('activity.updated', { value: new Date(selected.updated_at).toLocaleString() })}
             </Text>

@@ -27,11 +27,17 @@ const PRESENCE_HEARTBEAT_INTERVAL_MS = 60_000;
  *    project changes — is silently lost without this. This is the only
  *    reliable recovery path for, e.g., a project's VibeCoding list missing
  *    sessions that the admin console can see. `refreshFromServer` dedupes
- *    concurrent calls and no-ops when not yet in server mode.
+ *    concurrent calls and no-ops when not yet in server mode. Task-activity
+ *    operations ride their own snapshot pull, so the same hop also re-pulls
+ *    them (`refreshOperations`) — terminal outcomes published while
+ *    backgrounded must not leave a long-task card stuck at "running".
  */
 export function usePresenceHeartbeat(): void {
   const refreshFromServer = useControlCenterStore(
     state => state.refreshFromServer,
+  );
+  const refreshOperations = useControlCenterStore(
+    state => state.refreshOperations,
   );
   const serverMode = useControlCenterStore(state => state.serverMode);
   const previousAppStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -79,6 +85,16 @@ export function usePresenceHeartbeat(): void {
     // refreshFromServer no-ops internally.
     const resync = () => {
       void refreshFromServer();
+      // 任务活动卡不在平台快照里：operations 走独立的
+      // /api/operations/snapshot 拉取，只在 WS 重连与面板打开时触发。RN 在
+      // 后台挂起期间保持 socket "connected"（不触发 onclose/onopen），所以纯
+      // 后台→前台跳变不会走重连拉取——离开前台期间结束的长任务会永远停在
+      // "运行中"，收不到 completed/failed/cancelled 终态。slice 的 merge 幂等
+      // （按 operation_id 键合、revision 拦旧），重复拉取安全；未登录时
+      // serverMode 为 false 跳过，登录自愈路径会经重连拉到 operations。
+      if (useControlCenterStore.getState().serverMode) {
+        void refreshOperations();
+      }
     };
 
     const handleChange = (state: AppStateStatus) => {
@@ -122,5 +138,5 @@ export function usePresenceHeartbeat(): void {
       subscription.remove();
       stop();
     };
-  }, [refreshFromServer, serverMode]);
+  }, [refreshFromServer, refreshOperations, serverMode]);
 }
