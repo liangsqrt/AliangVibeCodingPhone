@@ -172,6 +172,7 @@
     "roleAssistant": "assistant",
     "roleSystem": "system",
     "sendFailed": "Send failed",
+    "sendUnconfirmed": "Send unconfirmed",
     "retrySend": "Retry send",
     "retry": "Retry",
     "dismissFailed": "Delete failed message",

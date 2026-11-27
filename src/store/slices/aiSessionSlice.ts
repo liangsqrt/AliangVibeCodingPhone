@@ -4,6 +4,7 @@ import { platformTransport } from '../../services/platformTransport';
 import { refreshSessionCommands as refreshSessionCommandsApi, serverAiMessageToAgent } from '../../api/sessions';
 import type { ServerAiSession } from '../../api/sessions';
 import type { AiAttachmentMeta } from '../../api/attachments';
+import { ApiResponseError } from '../../api/client';
 import { deleteGoal, fetchGoalSnapshot } from '../../api/goals';
 import { normalizeProvider, providerLabel } from '../../utils/modelIntensity';
 import { perfMark } from '../../utils/devFrameProbe';
@@ -1257,6 +1258,11 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
       throw new Error('Platform connection is required before sending a VibeCoding message.');
     }
     const currentRun = get().vibeRuns.find(run => run.id === sessionId);
+    const retry = currentRun?.transcript.find(item => item.id === options.retryMessageId);
+    if (options.retryMessageId && !retry?.sendReceipt) {
+      pendingMessageSends.delete(sendKey);
+      return;
+    }
     const provider = normalizeProvider(
       currentRun?.effectiveModelConfig?.provider ?? currentRun?.provider,
     );
@@ -1310,12 +1316,12 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
       currentRun.sourceSessionId != null &&
       currentRun.status === 'running' &&
       currentRun.runStateVersion === undefined;
-    const sendAsSteer = shouldSendAsSteer(
+    const sendAsSteer = !retry && shouldSendAsSteer(
       executionActive && (!tuiDrivenRun || canSteerExternal),
       provider,
       canSteerClaude || (tuiDrivenRun && canSteerExternal),
     );
-    if (shouldBlockConcurrentSend(turnActive, provider, sendAsSteer, waitingApproval)) {
+    if (!retry && shouldBlockConcurrentSend(turnActive, provider, sendAsSteer, waitingApproval)) {
       pendingMessageSends.delete(sendKey);
       // 审批等待期全 provider 硬拦（2026-10-24 codex 审批锁）：新消息会顶掉
       // waiting_approval 并把待审批打翻成 denied。运行中的单进程 CLI 拦截
@@ -1329,7 +1335,14 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
     // "running / waiting for AI" BEFORE the HTTP round trip. The optimistic
     // message is tagged with `pending: true` so the merge logic (internals.ts)
     // can reconcile it with the server's copy even when IDs differ.
-    const optimisticId = createId('msg');
+    const sendReceipt = retry?.sendReceipt ?? (
+      !sendAsSteer && !options.recallMessageId &&
+      get().platformFeatures.messageIdempotency &&
+      steerDevice?.capabilities?.includes('ai_run_start_v3')
+        ? { requestId: createId('send'), expectedModelConfigVersion: currentRun?.modelConfigVersion }
+        : undefined
+    );
+    const optimisticId = retry?.id ?? (sendReceipt ? `msg_request_${sendReceipt.requestId}` : createId('msg'));
     const optimisticMessage = {
       id: optimisticId,
       role: 'user' as const,
@@ -1337,10 +1350,11 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
       content: normalizedContent,
       timestamp: new Date().toISOString(),
       pending: true,
+      ...(sendReceipt ? { sendReceipt } : {}),
       // 气泡立刻显示「这条消息带了什么」；服务端确认后同一字段原样合并。
       ...(attachments.length > 0 ? { attachments } : {}),
     };
-    set(state => {
+    if (!retry) set(state => {
       let activeDeviceId = '';
       const vibeRuns = state.vibeRuns.map(run => {
         if (run.id !== sessionId) return run;
@@ -1400,12 +1414,12 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
               attachments,
             )
           : await platformTransport.sendAiMessage(
-              sessionId,
-              normalizedContent,
-              mode,
-              currentRun?.modelConfigVersion,
+              sessionId, normalizedContent, mode,
+              sendReceipt ? sendReceipt.expectedModelConfigVersion : currentRun?.modelConfigVersion,
               attachments,
-              options.recallMessageId,
+              ...(sendReceipt
+                ? [undefined, sendReceipt.requestId] as const
+                : options.recallMessageId ? [options.recallMessageId] as const : [] as const),
             );
       } catch (error) {
         // 本地 run 状态与服务器有时间差：steer 打在服务端已空闲的会话上会被
@@ -1438,21 +1452,29 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
 
           const responseIsNotOlder =
             response.run_state_version !== undefined &&
-            (run.runStateVersion === undefined ||
-              response.run_state_version >= run.runStateVersion);
-          const withAcceptedRun = responseIsNotOlder
+            response.run_state_version > (run.runStateVersion ?? -1) &&
+            (!run.optimisticRunPending || !retry);
+          const responseRunState = response.run_state ?? 'queued';
+          const phase: NonNullable<VibeCodingRun['phase']> =
+            responseRunState === 'completed' || responseRunState === 'cancelled'
+            ? 'completed'
+            : responseRunState === 'timed_out' || responseRunState === 'failed'
+              ? 'failed'
+              : responseRunState === 'waiting_approval' ? 'waiting_approval' : 'running';
+          const terminal = phase === 'completed' || phase === 'failed';
+          const withAcceptedRun: VibeCodingRun = responseIsNotOlder
             ? {
                 ...run,
-                status: 'running' as VibeStatus,
-                phase: 'running' as const,
-                activeRunId: response.run_id,
+                status: phase === 'completed' ? 'idle' as const : phase,
+                phase,
+                activeRunId: terminal ? undefined : response.run_id,
                 latestRunId: response.run_id,
-                runState: response.run_state ?? ('queued' as const),
+                runState: responseRunState,
                 runStateVersion: response.run_state_version,
                 optimisticRunPending: false,
                 optimisticRunBaseVersion: undefined,
               }
-            : {
+            : retry ? run : {
                 ...run,
                 optimisticRunPending: false,
                 optimisticRunBaseVersion: undefined,
@@ -1470,7 +1492,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
               ? withAcceptedRun.transcript.findIndex(item => item.id === serverMessageId)
               : -1;
 
-            if (serverMessageId && serverIndex >= 0) {
+            if (serverMessageId && serverIndex >= 0 && serverIndex !== optimisticIndex) {
               // Server copy already present (WebSocket arrived first). Drop
               // optimistic, confirm the server copy.
               const transcript = withAcceptedRun.transcript
@@ -1497,6 +1519,9 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
               ...optimistic,
               id: serverMessageId || optimisticId,
               pending: false,
+              failed: undefined,
+              sendUnconfirmed: undefined,
+              sendReceipt: undefined,
             };
             const transcript = withAcceptedRun.transcript.slice();
             transcript[optimisticIndex] = confirmedMessage;
@@ -1528,7 +1553,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
 
           // 3) Last resort: content-based match (handles edge-case where
           //    server assigned a different id and WebSocket already merged).
-          const byContent = withAcceptedRun.transcript.findIndex(
+          const byContent = sendReceipt ? -1 : withAcceptedRun.transcript.findIndex(
             item =>
               item.role === 'user' &&
               item.mode === mode &&
@@ -1560,12 +1585,15 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
       // restored (handled by the screen), so the user's NEXT message can't
       // accidentally append to this one and ship as a combined prompt. The
       // bubble's retry / dismiss affordance recovers or discards it.
+      const sendUnconfirmed = Boolean(sendReceipt) && (
+        !(error instanceof ApiResponseError) || error.status >= 500 || retry?.sendUnconfirmed === true
+      );
       set(state => ({
         vibeRuns: state.vibeRuns.map(run => {
           if (run.id !== sessionId) return run;
           const transcript = run.transcript.map(item =>
-            item.id === optimisticId
-              ? { ...item, pending: false, failed: true }
+            item.id === optimisticId && (item.pending || item.failed)
+              ? { ...item, pending: false, failed: true, sendUnconfirmed }
               : item,
           );
           const serverAcceptedWhileRequestFailed =
@@ -1576,8 +1604,9 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
             // The HTTP response may have been lost after Server committed and
             // the WS snapshot arrived. Never restore the previous terminal run
             // or mark the already-accepted prompt as a failed send.
-            return run;
+            return sendReceipt ? { ...run, transcript } : run;
           }
+          if (retry) return { ...run, transcript };
           return {
             ...run,
             status: currentRun?.status ?? ('idle' as VibeStatus),
@@ -1608,6 +1637,16 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
     // AgentMessage.mode is wider than the send API's ('voice' | 'text'); a
     // failed user bubble was originally dispatched as voice or text, so narrow.
     const mode: 'voice' | 'text' = failed.mode === 'voice' ? 'voice' : 'text';
+    if (failed.sendReceipt) {
+      try {
+        await get().appendAgentMessage(sessionId, content, mode, failed.attachments, {
+          retryMessageId: messageId,
+        });
+      } catch {
+        // Keep the same bubble and request for the next retry.
+      }
+      return;
+    }
     // Drop the stale failed bubble, then dispatch a FRESH send (new optimistic
     // bubble + HTTP). The retry never touches the composer input, so it cannot
     // combine with other text; appendAgentMessage re-marks the new bubble

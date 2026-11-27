@@ -490,6 +490,7 @@ interface BindDeviceResult {
 export interface PlatformFeatures {
   /** 「我的」页 Account/Usage 区块展示开关（默认 false 隐藏）。 */
   accountPortalVisible: boolean;
+  messageIdempotency?: boolean;
   /**
    * 部署级附件能力位（server snapshot features.attachments 下发）。字段缺失
    * （旧 server / 本地模式 / 未连接）为 undefined → 草稿态按不可用处理。
@@ -813,13 +814,13 @@ export interface ControlCenterState {
     content: string,
     mode: 'voice' | 'text',
     attachments?: AiAttachmentMeta[],
-    options?: { recallMessageId?: string },
+    options?: { recallMessageId?: string; retryMessageId?: string },
   ) => Promise<void>;
   /**
    * Re-send a failed-to-send user message (`AgentMessage.failed`) directly from
    * its retryable bubble — NOT through the composer input, so the retry can
-   * never append to / combine with other text. Removes the stale failed bubble
-   * and dispatches a fresh send; a repeat failure re-marks the new bubble failed.
+   * never append to / combine with other text. Reuses the original receipt
+   * request when supported.
    */
   retryAgentMessage: (sessionId: string, messageId: string) => Promise<void>;
   /** Remove a failed-to-send user bubble the user chose to discard. */

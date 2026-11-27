@@ -1381,7 +1381,7 @@ const TranscriptMessageListBase: React.FC<TranscriptMessageListProps> = ({
                         { color: theme.colors.error },
                       ]}
                     >
-                      {t('transcript.sendFailed')}
+                      {t(message.sendUnconfirmed ? 'transcript.sendUnconfirmed' : 'transcript.sendFailed')}
                     </Text>
                     {onRetryFailed ? (
                       <TouchableOpacity
@@ -1738,6 +1738,7 @@ const areTranscriptPropsEqual = (
     if (!prevMessage || !nextMessage) return false;
     if (prevMessage.contentKey !== nextMessage.contentKey) return false;
     if (prevMessage.failed !== nextMessage.failed) return false;
+    if (prevMessage.sendUnconfirmed !== nextMessage.sendUnconfirmed) return false;
   }
 
   if (

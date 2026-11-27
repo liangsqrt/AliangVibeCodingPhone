@@ -129,6 +129,7 @@ export interface PlatformSnapshot {
   /** Deployment-level feature flags (server snapshot features.*; missing = defaults). */
   features?: {
     account_portal_visible?: boolean;
+    message_idempotency?: boolean;
     attachments?: AttachmentCapability;
   };
   loadedAt: string;
@@ -526,6 +527,7 @@ class PlatformTransport {
     expectedModelConfigVersion?: number,
     attachments: AiAttachmentMeta[] = [],
     recallMessageId?: string,
+    clientRequestId?: string,
   ): ReturnType<typeof apiSendAiMessage> {
     return apiSendAiMessage(
       sessionId,
@@ -534,6 +536,7 @@ class PlatformTransport {
       mode,
       expectedModelConfigVersion,
       recallMessageId,
+      clientRequestId,
     );
   }
 

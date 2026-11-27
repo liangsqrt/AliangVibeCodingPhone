@@ -44,6 +44,7 @@ export interface DisplayTranscriptMessage {
    * site shows a retry / dismiss affordance when truthy.
    */
   failed?: boolean;
+  sendUnconfirmed?: boolean;
   /**
    * Underlying {@link AgentMessage.id}s this (possibly coalesced) display bubble
    * spans. Seeded with the first message's id and extended by `appendSegments`
@@ -358,6 +359,7 @@ export const buildDisplayTranscript = (
         contentKey: message.content ?? '',
         sourceMessageIds: [message.id],
         failed: message.failed ? true : undefined,
+        sendUnconfirmed: message.sendUnconfirmed,
         attachments: message.attachments?.length ? message.attachments : undefined,
         rawContent: message.content ?? '',
       });

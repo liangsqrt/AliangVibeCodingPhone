@@ -974,7 +974,7 @@ export function mergeAgentMessages(
   const findPendingConfirmationIndex = (
     current: VibeCodingRun['transcript'][number],
   ) => {
-    if (!current.pending) return -1;
+    if (!current.pending || current.sendReceipt) return -1;
     // Try exact match first (id + role + content).
     const exactIndex = incoming.findIndex(
       item =>
@@ -2390,6 +2390,7 @@ export function stateFromSnapshot(
     // 部署级功能开关：严格 `=== true`——字段缺失（旧 server/本地模式）即隐藏。
     platformFeatures: {
       accountPortalVisible: snapshot.features?.account_portal_visible === true,
+      messageIdempotency: snapshot.features?.message_idempotency,
       attachmentsCapability: snapshot.features?.attachments,
     },
     events: [...warningEvents, ...realtimeEvents].slice(0, MAX_EVENTS),

@@ -767,13 +767,12 @@ export interface AgentMessage {
   pending?: boolean;
   index?: number;
   /**
-   * Client-only: this user message FAILED to send (the HTTP dispatch threw —
-   * e.g. agent offline). Unlike `pending` (an in-flight optimistic bubble that
-   * the server will confirm), a failed message never reached the server, so it
-   * has no server id and must survive server-snapshot merges as a client-only
-   * retryable bubble. Surfaced in the UI with a retry / dismiss affordance.
+   * Client-only: the send threw. Keep the bubble until it is confirmed,
+   * retried or dismissed.
    */
   failed?: boolean;
+  sendUnconfirmed?: boolean;
+  sendReceipt?: { requestId: string; expectedModelConfigVersion?: number };
   /**
    * Server-owned Goal this message belongs to (set by the backend for messages
    * produced during a Goal-driven run). Matches `goal_id` on the wire. Used by

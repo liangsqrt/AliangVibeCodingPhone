@@ -582,6 +582,7 @@ export const createAiSession = (input: {
 export interface SendAiMessageResponse {
   message_id: string;
   status: string;
+  replayed?: boolean;
   run_id?: string;
   run_state?: ServerAiSession['run_state'];
   run_state_version?: number;
@@ -600,13 +601,15 @@ export const sendAiMessage = (
    * 仅 agentcore 会话生效；运行中会话被服务端 409 recall_run_active 拒绝。
    */
   recallMessageId?: string,
+  clientRequestId?: string,
 ): Promise<SendAiMessageResponse> =>
-  apiPost(`/api/ai/sessions/${sessionId}/messages`, {
+  apiPost(`/api/ai/sessions/${sessionId}/messages${clientRequestId ? '/with-receipt' : ''}`, {
     content,
     attachments,
     mode,
     expected_model_config_version: expectedModelConfigVersion,
     ...(recallMessageId ? { recall_message_id: recallMessageId } : {}),
+    ...(clientRequestId ? { client_request_id: clientRequestId } : {}),
   }, {
     timeoutMs: AI_TURN_REQUEST_TIMEOUT_MS,
   });

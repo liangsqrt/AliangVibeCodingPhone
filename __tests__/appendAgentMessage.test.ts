@@ -1,6 +1,7 @@
 import { useControlCenterStore } from '../src/store/controlCenterStore';
 import { platformTransport } from '../src/services/platformTransport';
 import type { VibeCodingRun } from '../src/data/platformModels';
+import { mergeAgentMessages } from '../src/store/internals';
 
 jest.mock('../src/services/platformTransport', () => ({
   platformTransport: {
@@ -119,6 +120,51 @@ describe('appendAgentMessage', () => {
       content: 'Follow-up',
       pending: false,
     });
+  });
+
+  it('reuses the failed bubble and send ID after a lost response', async () => {
+    useControlCenterStore.setState(state => ({
+      platformFeatures: { ...state.platformFeatures, messageIdempotency: true },
+      devices: state.devices.map(device => ({ ...device, capabilities: ['ai_run_start_v3'] })),
+      vibeRuns: state.vibeRuns.map(item => ({ ...item, modelConfigVersion: 7 })),
+    }));
+    const attachments = [{
+      asset_id: 'photo-1', kind: 'photo' as const, name: 'fixture.png', mime: 'image/png', bytes: 100,
+    }];
+    const send = platformTransport.sendAiMessage as jest.Mock;
+    send.mockRejectedValueOnce(new Error('Connection lost'))
+      .mockRejectedValueOnce(new Error('Still offline')).mockResolvedValueOnce({
+      message_id: 'server-user', run_id: 'run-1', status: 'accepted', replayed: true,
+      run_state: 'completed', run_state_version: 12,
+    });
+    const store = useControlCenterStore.getState();
+    await expect(store.appendAgentMessage('s1', 'voice prompt', 'voice', attachments))
+      .rejects.toThrow('Connection lost');
+    const failed = useControlCenterStore.getState().vibeRuns[0].transcript.at(-1)!;
+    expect(failed).toMatchObject({ failed: true, sendUnconfirmed: true });
+    const firstArgs = send.mock.calls[0];
+    expect(firstArgs[6]).toEqual(expect.any(String));
+    expect(firstArgs[4]).toEqual(attachments);
+
+    await store.retryAgentMessage('s1', failed.id);
+    expect(send.mock.calls[1]).toEqual(firstArgs);
+    expect(useControlCenterStore.getState().vibeRuns[0].transcript.at(-1)).toMatchObject({
+      id: failed.id, failed: true, sendUnconfirmed: true,
+    });
+    await store.retryAgentMessage('s1', failed.id);
+    expect(send.mock.calls[2]).toEqual(firstArgs);
+    const recovered = useControlCenterStore.getState().vibeRuns[0];
+    expect(recovered).toMatchObject({ status: 'idle', runState: 'completed', activeRunId: undefined });
+    expect(recovered.transcript.map(message => message.id)).toEqual(['old-user', 'old-assistant', 'server-user']);
+    expect(recovered.transcript.at(-1)).toMatchObject({ mode: 'voice', pending: false });
+  });
+
+  it('confirms a receipt bubble from the server message ID even after an older identical prompt', () => {
+    const previous = { id: 'earlier', role: 'user' as const, content: 'same prompt', timestamp: '09:58' };
+    const sent = { ...previous, id: 'msg_request_send-fixture', timestamp: '10:01' };
+    const failed = { ...sent, failed: true, sendUnconfirmed: true, sendReceipt: { requestId: 'send-fixture' } };
+    expect(mergeAgentMessages([previous, failed], [previous])).toEqual([previous, failed]);
+    expect(mergeAgentMessages([previous, failed], [previous, sent])).toEqual([previous, sent]);
   });
 
   it('binds a new turn to the model config version visible when Send is pressed', async () => {

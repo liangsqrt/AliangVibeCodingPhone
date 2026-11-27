@@ -59,6 +59,7 @@ export interface MobilePlatformSnapshot {
    */
   features?: {
     account_portal_visible?: boolean;
+    message_idempotency?: boolean;
     /**
      * Deployment-level attachment capability (COS configured?). Same shape as a
      * session's `attachments` block, but available without any session so the
