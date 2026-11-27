@@ -110,6 +110,33 @@ test('displays elapsed time for unmeasured work and freezes it at completion', (
   }
 });
 
+test('shows raw counters for incremental progress without faking a percent', () => {
+  const previousOperations = mockStore.operations;
+  mockStore.operations = [
+    { ...operation, operation_id: 'op-count', title: 'Shell output', kind: 'shell',
+      progress: { current: 321, unit: 'bytes' } },
+    { ...operation, operation_id: 'op-total', title: 'Measured build' },
+  ];
+  let renderer!: TestRenderer.ReactTestRenderer;
+  try {
+    act(() => {
+      renderer = TestRenderer.create(
+        <SafeAreaProvider initialMetrics={{
+          frame: { x: 0, y: 0, width: 320, height: 640 },
+          insets: { top: 0, bottom: 0, left: 0, right: 0 },
+        }}>
+          <OperationActivitySheet open onClose={jest.fn()} onOpenSession={jest.fn()} />
+        </SafeAreaProvider>,
+      );
+    });
+    expect(labels(renderer.root)).toContain('321 B');
+    expect(labels(renderer.root).filter(label => label.includes('%'))).toEqual(['38%']);
+  } finally {
+    mockStore.operations = previousOperations;
+    if (renderer) act(() => renderer.unmount());
+  }
+});
+
 test('omits elapsed time for queued work and incomplete timestamps', () => {
   const now = Date.parse('2026-11-26T01:02:03Z');
   const running = { ...operation, started_at: operation.updated_at };

@@ -108,6 +108,20 @@ export function OperationActivitySheet({ open, onClose, sessionId, initialSource
     );
   };
 
+  const renderCount = (row: Operation) => {
+    const progress = row.progress;
+    if (!progress || operationPercent(row) !== undefined) return null;
+    const count = formatValue(progress.current, progress.unit);
+    const label = progress.unit && progress.unit !== 'bytes'
+      ? `${count} ${t(`activity.unit.${progress.unit}`, { defaultValue: progress.unit })}`
+      : count;
+    return (
+      <Text style={[theme.typography.codeSm, { color: theme.colors.onSurfaceVariant }]}>
+        {label}
+      </Text>
+    );
+  };
+
   return (
     <BottomSheet open={open} onClose={onClose} title={t('activity.title')}>
       <View style={styles.body}>
@@ -204,6 +218,7 @@ export function OperationActivitySheet({ open, onClose, sessionId, initialSource
                   <Text numberOfLines={2} style={{ color: theme.colors.onSurfaceVariant }}>{rowDetails(item)}</Text>
                   {renderElapsed(item)}
                   {renderProgress(item)}
+                  {renderCount(item)}
                 </Pressable>
               )}
             />
