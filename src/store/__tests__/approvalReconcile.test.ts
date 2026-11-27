@@ -99,6 +99,7 @@ describe('reconcileSessionApprovals', () => {
       serverMode: true,
       approvals: [],
       approvalHistory: [],
+      notifications: [],
       unreadNotificationsTotal: 0,
     });
   });
@@ -253,7 +254,9 @@ describe('reconcileSessionApprovals', () => {
       const store = useControlCenterStore.getState();
       const recovering = store.reconcileSessionApprovals('ais_1');
       if (settlesDuringRecovery) {
-        store.handleTransportEvent({ type: 'approval.requested', approval: pending } as never);
+        if ((nextBits() & 1) === 1) {
+          store.handleTransportEvent({ type: 'approval.requested', approval: pending } as never);
+        }
         store.handleTransportEvent({
           type: 'notification.created',
           notification: {
@@ -266,6 +269,7 @@ describe('reconcileSessionApprovals', () => {
       finish(snapshot);
       await recovering;
 
+      store.handleTransportEvent({ type: 'approval.requested', approval: pending } as never);
       const state = useControlCenterStore.getState();
       expect(state.approvals.filter(approval => approval.status === 'pending').map(approval => approval.id))
         .toEqual(resolved ? [] : [id]);

@@ -1459,6 +1459,32 @@ export const enteredWaitingApproval = (
   next: VibeStatus,
 ): boolean => !isWaitingApprovalStatus(prev) && isWaitingApprovalStatus(next);
 
+export function approvalDecisionFromNotification(notification: PushNotificationItem) {
+  if (!notification.approvalId) return undefined;
+  if (notification.type === 'completed') return 'approved';
+  if (notification.type === 'error') return 'denied';
+  return undefined;
+}
+
+export function applyApprovalNotificationResolutions(
+  approvals: ApprovalRequest[],
+  notifications: PushNotificationItem[],
+): ApprovalRequest[] {
+  const resolved = new Map<string, Pick<ApprovalRequest, 'status' | 'resolvedAt'>>();
+  for (const notification of notifications) {
+    const status = approvalDecisionFromNotification(notification);
+    const id = notification.approvalId;
+    if (status && id && !resolved.has(id)) {
+      resolved.set(id, { status, resolvedAt: notification.createdAt });
+    }
+  }
+  if (resolved.size === 0) return approvals;
+  return approvals.map(approval => {
+    const resolution = resolved.get(approval.id);
+    return resolution && approval.status === 'pending' ? { ...approval, ...resolution } : approval;
+  });
+}
+
 /**
  * Merge approval reads with live state. Resolution is final for an approval
  * ID, including when a pending response was captured before the resolution.

@@ -134,6 +134,31 @@ describe('refreshFromServer outcome', () => {
     ]));
   });
 
+  test('remembers a resolution notice across a snapshot before the card arrives', async () => {
+    mockedLoadSnapshot.mockResolvedValue(emptySnapshot as never);
+    const store = useControlCenterStore.getState();
+    store.handleTransportEvent({
+      type: 'notification.created',
+      notification: {
+        id: 'notice-before-card', approval_id: 'offline-card',
+        type: 'completed', title: 'Resolved', body: 'Approved', read: true,
+        created_at: '2026-07-12T00:00:02Z',
+      },
+    } as never);
+    await store.refreshFromServer();
+
+    store.handleTransportEvent({
+      type: 'approval.requested',
+      approval: {
+        id: 'offline-card', device_id: 'd1', session_id: 's1',
+        kind: 'client_response', title: 'Approve?', summary: 'Waiting',
+        status: 'pending', risk: 'low', created_at: '2026-07-12T00:00:01Z',
+      },
+    } as never);
+
+    expect(useControlCenterStore.getState().approvals).toEqual([]);
+  });
+
   test('returns {ok:false, error} when the snapshot fetch fails', async () => {
     mockedLoadSnapshot.mockRejectedValue(new Error('snapshot boom'));
 

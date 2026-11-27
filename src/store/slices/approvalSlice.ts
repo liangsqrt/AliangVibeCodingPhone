@@ -3,6 +3,7 @@ import type { VibeCodingRun } from '../../data/platformModels';
 import { platformTransport } from '../../services/platformTransport';
 import type { ControlCenterState } from '../types';
 import {
+  applyApprovalNotificationResolutions,
   formatActivityLabel,
   MAX_RUN_EVENTS,
   mergeApprovalReconcile,
@@ -148,7 +149,8 @@ export const createApprovalSlice: StateCreator<ControlCenterState, [], [], Appro
     set(state => {
       const pendingCount = (items: { status: string }[]) =>
         items.filter(item => item.status === 'pending').length;
-      const approvals = mergeApprovalReconcile(state.approvals, incoming);
+      const observed = applyApprovalNotificationResolutions(incoming, state.notifications);
+      const approvals = mergeApprovalReconcile(state.approvals, observed);
       const forSession = (items: ControlCenterState['approvals']) =>
         items.filter(item => item.sessionId === sessionId);
       return {
@@ -176,7 +178,7 @@ export const createApprovalSlice: StateCreator<ControlCenterState, [], [], Appro
           });
         }) : state.vibeRuns,
         approvalHistory: mergeHistoryById(
-          incoming.filter(item => item.status !== 'pending'),
+          observed.filter(item => item.status !== 'pending'),
           state.approvalHistory,
         ),
         // 未读口径同步:对账前本会话本地 pending 与服务端真值的差值(幽灵
@@ -203,7 +205,10 @@ export const createApprovalSlice: StateCreator<ControlCenterState, [], [], Appro
     const page = await platformTransport.loadApprovalsPage({ limit: 100 });
     const incoming = page.items.map(serverApprovalToClient);
     set(state => ({
-      approvals: mergeApprovalReconcile(state.approvals, incoming),
+      approvals: mergeApprovalReconcile(
+        state.approvals,
+        applyApprovalNotificationResolutions(incoming, state.notifications),
+      ),
     }));
   },
 

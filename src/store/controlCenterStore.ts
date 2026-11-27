@@ -47,6 +47,7 @@ import {
   attachDeviceRelations,
   beginTerminalReplayStream,
   createId,
+  approvalDecisionFromNotification,
   evictOverflowVibeRuns,
   event,
   finalizeTerminalReplay,
@@ -1550,7 +1551,9 @@ export const useControlCenterStore = create<ControlCenterState>()(
               const approval = serverApprovalToClient(transportEvent.approval);
               const state = get();
               if (state.approvals.some(item => item.id === approval.id && item.status !== 'pending') ||
-                  state.approvalHistory.some(item => item.id === approval.id && item.status !== 'pending')) return;
+                  state.approvalHistory.some(item => item.id === approval.id && item.status !== 'pending') ||
+                  state.notifications.some(item => item.approvalId === approval.id &&
+                    approvalDecisionFromNotification(item))) return;
               const approvalEvent = {
                 id: `approval-${approval.id}`,
                 type: 'approval' as const,
@@ -1619,15 +1622,7 @@ export const useControlCenterStore = create<ControlCenterState>()(
                   .getState()
                   .show(nextNotification.title, 'info');
               }
-              const approvalDecision =
-                nextNotification.approvalId &&
-                nextNotification.type !== 'approval'
-                  ? nextNotification.type === 'completed'
-                    ? 'approved'
-                    : nextNotification.type === 'error'
-                    ? 'denied'
-                    : undefined
-                  : undefined;
+              const approvalDecision = approvalDecisionFromNotification(nextNotification);
               set(state => ({
                 notifications: upsertNotification(
                   state.notifications,

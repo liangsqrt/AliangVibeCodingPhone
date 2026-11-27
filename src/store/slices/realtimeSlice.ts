@@ -7,9 +7,12 @@ import { cancelAiStreamBatch } from '../aiStreamBatching';
 import { cancelTerminalBatch } from '../terminalBatching';
 import type { ControlCenterState, RefreshOutcome } from '../types';
 import {
+  approvalDecisionFromNotification,
+  applyApprovalNotificationResolutions,
   dedupeUnifiedEvents,
   emptySessionData,
   MAX_APPROVALS,
+  MAX_NOTIFICATIONS,
   mergeApprovalReconcile,
   realtimeEventToUnifiedEvent,
   resolveRefreshAction,
@@ -120,9 +123,23 @@ function syncFromSnapshot(
     knownDeviceIds.has(approval.deviceId) &&
     (approval.status !== 'pending' || requestRows.get(approval.id) !== approval),
   );
-  const approvals = mergeApprovalReconcile(liveRows, next.approvals)
-    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
-  return { ...next, approvals: approvals.slice(0, MAX_APPROVALS) };
+  // A pending card may arrive after its resolution notice. Keep those notices
+  // across the snapshot's bounded notification window so they still win.
+  const notificationsById = new Map(next.notifications.map(item => [item.id, item]));
+  for (const item of state.notifications) {
+    if (approvalDecisionFromNotification(item) && !notificationsById.has(item.id) &&
+        (!item.deviceId || knownDeviceIds.has(item.deviceId))) {
+      notificationsById.set(item.id, item);
+    }
+  }
+  const notifications = [...notificationsById.values()]
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, MAX_NOTIFICATIONS);
+  const approvals = mergeApprovalReconcile(
+    applyApprovalNotificationResolutions(liveRows, notifications),
+    applyApprovalNotificationResolutions(next.approvals, notifications),
+  ).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+  return { ...next, approvals: approvals.slice(0, MAX_APPROVALS), notifications };
 }
 
 // Connection lifecycle slice. Owns connection/freshness state + the
