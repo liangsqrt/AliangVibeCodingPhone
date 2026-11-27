@@ -320,13 +320,14 @@ export const buildDisplayTranscript = (
   // `import_<sha1>` ids, or native upstream ids). Upstream dedup is id-only, so
   // such a pair survives into the transcript; without this guard the coalescing
   // below would merge them into a single bubble and the content would render
-  // twice. Skipping an exact repeat is always safe: two consecutive same-role
-  // messages with identical text are never meant to display as separate parts.
+  // twice. Messages with receipt IDs already have an identity shared with
+  // the server, so intentional repeats keep their individual bubbles.
   let lastRole = '';
   let lastContent = '';
   // 素材 id 也要参与去重判定：同一句话配不同图片连发两次是合法操作，
   // 不能被「同文同角色」当成乐观/快照重复而吞掉第二条。
   let lastAttachmentsKey = '';
+  let lastReceiptId: string | undefined;
 
   for (const message of messages) {
     // 兜底丢弃必须发生在 lastRole/lastContent 去重状态更新与 segment 解析之前：
@@ -343,11 +344,15 @@ export const buildDisplayTranscript = (
     const attachmentsKey = (message.attachments ?? [])
       .map(item => item.asset_id)
       .join(',');
+    const receiptId = role === 'user' && message.id.startsWith('msg_request_')
+      ? message.id
+      : undefined;
     if (
       role === lastRole &&
       normalized !== '' &&
       normalized === lastContent &&
-      attachmentsKey === lastAttachmentsKey
+      attachmentsKey === lastAttachmentsKey &&
+      receiptId === lastReceiptId
     ) {
       continue;
     }
@@ -359,6 +364,7 @@ export const buildDisplayTranscript = (
     lastRole = role;
     lastContent = normalized;
     lastAttachmentsKey = attachmentsKey;
+    lastReceiptId = receiptId;
 
     const previous = result[result.length - 1];
 

@@ -38,6 +38,17 @@ describe('turnDeliveryLabel', () => {
 });
 
 describe('buildDisplayTranscript — 阶段契约(display 合并)', () => {
+  it('keeps separate receipt bubbles for intentional identical sends', () => {
+    const previous = msg({ id: 'msg_request_old', role: 'user', content: 'same' });
+    const next = msg({
+      id: 'msg_request_new', role: 'user', content: 'same', failed: true, sendUnconfirmed: true,
+    });
+    const display = buildDisplayTranscript([previous, next]);
+    expect(display.map(message => message.sourceMessageIds[0]))
+      .toEqual([previous.id, next.id]);
+    expect(display[1]).toMatchObject({ failed: true, sendUnconfirmed: true });
+  });
+
   it('连续同角色字节相同 → 去重一条(乐观+快照双存的兜底)', () => {
     const out = buildDisplayTranscript([
       msg({ id: 'a1', role: 'user', content: '你好' }),
