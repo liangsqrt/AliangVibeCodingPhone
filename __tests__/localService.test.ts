@@ -110,7 +110,9 @@ describe('platform service base url — single source of truth', () => {
 
   it('discoverReachableBaseUrl probes the config host and returns it on 200', async () => {
     // 双通道语义:primary 快 30% 以上(primary 0ms vs nat0 120ms)时必选 primary。
-    mockHealthByChannel({ primary: 0, nat0: 120 });
+    // hk 显式置 fail:第三通道(0c156a6 引入)不置 fail 会以 0ms 与 primary 并列,
+    // 并列时选择结果不稳定——全量并发下偶发失败(此前已修过同文件另外两例)。
+    mockHealthByChannel({ primary: 0, nat0: 120, hk: 'fail' });
 
     const url = await discoverReachableBaseUrl();
 
@@ -141,7 +143,7 @@ describe('双通道探测与选择', () => {
   });
 
   it('双通道均成功且 nat0 更快 30%+ → 选 nat0,先验落盘 nat0', async () => {
-    mockHealthByChannel({ primary: 120, nat0: 0 });
+    mockHealthByChannel({ primary: 120, nat0: 0, hk: 'fail' });
 
     const url = await discoverReachableBaseUrl();
 
@@ -152,7 +154,7 @@ describe('双通道探测与选择', () => {
   });
 
   it('primary 更快 30%+ → 保持 primary', async () => {
-    mockHealthByChannel({ primary: 0, nat0: 120 });
+    mockHealthByChannel({ primary: 0, nat0: 120, hk: 'fail' });
 
     const url = await discoverReachableBaseUrl();
 
@@ -162,7 +164,7 @@ describe('双通道探测与选择', () => {
   });
 
   it('nat0 探测全失败(超时/拒绝同一作废路径)→ 回 primary 且不抛错', async () => {
-    mockHealthByChannel({ primary: 0, nat0: 'fail' });
+    mockHealthByChannel({ primary: 0, nat0: 'fail', hk: 'fail' });
 
     const url = await discoverReachableBaseUrl();
 
@@ -328,7 +330,7 @@ describe('channel mode — auto/manual(线路面板语义)', () => {
     await setChannelMode('manual', 'primary');
     await setChannelMode('auto');
 
-    mockHealthByChannel({ primary: 120, nat0: 0 });
+    mockHealthByChannel({ primary: 120, nat0: 0, hk: 'fail' });
     const url = await discoverReachableBaseUrl();
 
     expect(url).toBe(NAT0_BASE_URL);
@@ -370,7 +372,7 @@ describe('channel mode — auto/manual(线路面板语义)', () => {
   });
 
   it('getChannelStatus 返回双通道实时探测(面板展示用)', async () => {
-    mockHealthByChannel({ primary: 0, nat0: 'fail' });
+    mockHealthByChannel({ primary: 0, nat0: 'fail', hk: 'fail' });
 
     const status = await getChannelStatus();
 

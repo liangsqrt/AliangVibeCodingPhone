@@ -11,6 +11,7 @@ import {
 } from '../utils/aiRunNotice';
 import { routeTerminalOutputToEmulator } from '../services/terminalOutputRegistry';
 import { noteFirstAiTextReceipt, perfMark } from '../utils/devFrameProbe';
+import { noteFirstTextProduced, noteSubsequentTextProduced } from '../utils/renderTiming';
 import {
   forgetTerminalGeometryFollow,
   isLocalTerminalResizeRecent,
@@ -586,6 +587,30 @@ export const useControlCenterStore = create<ControlCenterState>()(
                 channel: transportEvent.raw.channel,
                 runId: transportEvent.raw.run_id,
                 eventSeq: transportEvent.raw.event_seq,
+                emittedAtMs: transportEvent.raw.agent_emitted_at_ms,
+              });
+            }
+            // SYNC-02 生产版上屏时序:与上面的 dev 探针同一组准入条件(只测
+            // 当前正在看的会话、前台、带 agent_emitted_at_ms 的帧),但不受
+            // __DEV__ 限制——P95 要在真实使用中测,不是只在开发构建里。
+            if (transportEvent.type === 'ai.delta' &&
+                transportEvent.raw.agent_emitted_at_ms !== undefined &&
+                get().currentlyViewedSessionId === transportEvent.sessionId &&
+                AppState.currentState === 'active') {
+              noteFirstTextProduced({
+                sessionId: transportEvent.sessionId,
+                messageId: transportEvent.messageId,
+                delta: transportEvent.delta,
+                channel: transportEvent.raw.channel,
+                runId: transportEvent.raw.run_id,
+                emittedAtMs: transportEvent.raw.agent_emitted_at_ms,
+              });
+              noteSubsequentTextProduced({
+                sessionId: transportEvent.sessionId,
+                messageId: transportEvent.messageId,
+                delta: transportEvent.delta,
+                channel: transportEvent.raw.channel,
+                runId: transportEvent.raw.run_id,
                 emittedAtMs: transportEvent.raw.agent_emitted_at_ms,
               });
             }

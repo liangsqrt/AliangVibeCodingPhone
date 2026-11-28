@@ -24,6 +24,7 @@ import {
 } from '../../utils/activityRenderMemo';
 import { derivedApprovalPlanKey } from '../../utils/messageRendering';
 import { noteFirstAiTextCommit } from '../../utils/devFrameProbe';
+import { noteTextCommitted } from '../../utils/renderTiming';
 import { useToastStore } from '../../store/toastStore';
 import type { StructuredActivityEvent } from '../../data/platformModels';
 import type {
@@ -245,6 +246,7 @@ const TranscriptMessageListBase: React.FC<TranscriptMessageListProps> = ({
     if (__DEV__ && sessionId && message?.role === 'assistant' &&
         message.segments.length > 0 && AppState.currentState === 'active') {
       noteFirstAiTextCommit(sessionId, message.sourceMessageIds);
+      noteTextCommitted(sessionId, message.sourceMessageIds);
     }
   }, [message, sessionId]);
 
