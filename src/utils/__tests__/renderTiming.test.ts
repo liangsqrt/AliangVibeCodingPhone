@@ -18,8 +18,8 @@ beforeEach(() => {
   configureRenderTimingSender(message => {
     sent.push(message);
   });
-  jest.spyOn(global, 'requestAnimationFrame').mockImplementation((cb: () => void) => {
-    rafCallbacks.push(cb);
+  jest.spyOn(global, 'requestAnimationFrame').mockImplementation((cb: (time: number) => void) => {
+    rafCallbacks.push(() => cb(0));
     return rafCallbacks.length;
   });
 });
@@ -93,8 +93,9 @@ describe('首段文字', () => {
     ['channel 是 user', { channel: 'user' }],
     ['delta 为空', { delta: '   ' }],
   ])('不登记: %s', (_label, over) => {
-    noteFirstTextProduced(frame(over));
-    expect(noteTextCommitted('s1', [String(over.messageId ?? 'm1')])).toBe(false);
+    const patch = over as Record<string, unknown>;
+    noteFirstTextProduced(frame(patch));
+    expect(noteTextCommitted('s1', [String(patch.messageId ?? 'm1')])).toBe(false);
   });
 });
 

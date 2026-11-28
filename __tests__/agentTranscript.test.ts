@@ -383,3 +383,51 @@ describe('agentTranscript', () => {
     expect(display[0].sourceMessageIds).toEqual(['a2']);
   });
 });
+
+describe('aliang-options 围栏的反引号数量容错', () => {
+  // 2026-11-28 线上事故:模型把围栏写成 4 反引号。只认 3 个会匹配到前 3 个,
+  // 把第 4 个留在原处——JSON 转成 <approval-request> 标签后,残留的反引号让
+  // markdown 把整段当成代码块外晒,审批卡消失。
+  const optionJson = JSON.stringify({
+    v: 2,
+    title: 'mermaid 支持的实现方案选型',
+    header: '实现方案',
+    summary: '请选择实施方向。',
+    options: [
+      { id: 'inplace-auto', label: '方案A：自动渲染', description: '约1-2天' },
+      { id: 'spec-first', label: '先出设计文档', description: '评审后再实施' },
+    ],
+    allow_custom: true,
+    multi: false,
+  });
+  const msg = (content: string) => message('f1', 'assistant', content);
+
+  it('4 反引号围栏转成审批卡,不残留代码块', () => {
+    const segments = parseTranscriptSegments(
+      msg('评估结论如下。\n\n````aliang-options\n' + optionJson + '\n````'),
+    );
+    const callouts = segments.filter(s => s.kind === 'callout');
+    expect(callouts.length).toBeGreaterThan(0);
+    // 不得留下任何代码块段:残留的 ``` 会被 markdown 当成未闭合代码块。
+    expect(segments.filter(s => s.kind === 'code')).toHaveLength(0);
+  });
+
+  it('3 反引号围栏仍然正常(回归护栏)', () => {
+    const segments = parseTranscriptSegments(
+      msg('\n```aliang-options\n' + optionJson + '\n```'),
+    );
+    expect(segments.filter(s => s.kind === 'callout').length).toBeGreaterThan(0);
+  });
+
+  it('围栏外的正文保留', () => {
+    const segments = parseTranscriptSegments(
+      msg('前文说明。\n\n````aliang-options\n' + optionJson + '\n````\n\n后文。'),
+    );
+    const text = segments
+      .filter(s => s.kind === 'text')
+      .map(s => (s as { content: string }).content)
+      .join('');
+    expect(text).toContain('前文说明');
+    expect(text).toContain('后文');
+  });
+});

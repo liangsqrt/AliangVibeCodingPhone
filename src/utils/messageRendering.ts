@@ -575,8 +575,13 @@ const approvalRequestTag = (formatted: {
 
 const replaceAliangOptionsFences = (rawContent: string) => {
   const content = rawContent.replace(
-    /```aliang-options\s*([\s\S]*?)```/gi,
-    (_match, body) =>
+    // 围栏接受 3 个或更多反引号,且开闭数量一致:模型偶尔漂移成 4 反引号
+    // (2026-11-28 线上实锤,mermaid 方案选型回合)。只认 3 个会匹配到前 3 个,
+    // 把第 4 个留在原处——JSON 转成 <approval-request> 标签后,残留的反引号
+    // 让 markdown 把整段当成代码块外晒,审批卡消失。与 server 端
+    // parseAliangOptions 同口径。
+    /(`{3,})aliang-options\s*([\s\S]*?)\1/gi,
+    (_match, _fence, body) =>
       approvalRequestTag(formatAliangOptionsFence(String(body ?? ''))),
   );
   return replaceBareOptionJson(replaceTruncatedOptionFence(content));
@@ -724,13 +729,15 @@ interface FenceSpan {
 
 const collectOptionFenceSpans = (content: string): FenceSpan[] => {
   const spans: FenceSpan[] = [];
-  const fence = /```([^\n`]*)\n([\s\S]*?)```/g;
+  // 同样接受 3+ 反引号;language 取反引号之后的内容,4 反引号时不再把前导
+  // 反引号误当成语言名的一部分(否则不在白名单里,被当成代码示例跳过)。
+  const fence = /(`{3,})([^\n`]*)\n([\s\S]*?)\1/g;
   let match: RegExpExecArray | null;
   while ((match = fence.exec(content))) {
     spans.push({
       start: match.index,
       end: match.index + match[0].length,
-      language: match[1].trim().toLowerCase(),
+      language: match[2].trim().toLowerCase(),
     });
   }
   return spans;
