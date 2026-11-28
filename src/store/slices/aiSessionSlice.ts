@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand';
 import type { AgentCommandInfo, VibeCodingRun, VibeStatus } from '../../data/platformModels';
 import { platformTransport } from '../../services/platformTransport';
 import { refreshSessionCommands as refreshSessionCommandsApi, serverAiMessageToAgent } from '../../api/sessions';
+import { orderMessagesBySeq } from '../../utils/messageOrder';
 import type { ServerAiSession } from '../../api/sessions';
 import type { AiAttachmentMeta } from '../../api/attachments';
 import { ApiResponseError } from '../../api/client';
@@ -515,7 +516,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
         sessionId,
         { limit: TAIL_REFRESH_PAGE_LIMIT, after: anchor },
       );
-      const incoming = response.messages.map(serverAiMessageToAgent);
+      const incoming = orderMessagesBySeq(response.messages.map(serverAiMessageToAgent));
       let changed = false;
       set(state => {
         const vibeRuns = state.vibeRuns.map(run => {
@@ -681,7 +682,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
           commitBatch();
           throw error;
         }
-        const incoming = response.messages.map(serverAiMessageToAgent);
+        const incoming = orderMessagesBySeq(response.messages.map(serverAiMessageToAgent));
         batch.push(...incoming);
         fetched += incoming.length;
         anchorMissing = anchorMissing || response.page.anchor_found === false;
@@ -785,7 +786,7 @@ export const createAiSessionSlice: StateCreator<ControlCenterState, [], [], AiSe
           'HISTORY_ANCHOR_LOST: 服务端已找不到本地窗口头部的对应消息,无法继续加载更早历史',
         );
       }
-      const earlierMessages = response.messages.map(serverAiMessageToAgent);
+      const earlierMessages = orderMessagesBySeq(response.messages.map(serverAiMessageToAgent));
 
       set(state => {
         const vibeRuns = state.vibeRuns.map(run => {

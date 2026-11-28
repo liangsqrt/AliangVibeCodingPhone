@@ -772,6 +772,12 @@ export interface AgentMessage {
   pending?: boolean;
   index?: number;
   /**
+   * 会话级单调序号(wire `seq`,与网页端同键同义)。由产生数据的那一端分配,
+   * 跨进程重启、跨端合并、跨页翻历史都恒等,是唯一可比的先后真值。0/undefined
+   * = 旧 agent 或本地新气泡,排序时原地不动。
+   */
+  seq?: number;
+  /**
    * Client-only: the send threw. Keep the bubble until it is confirmed,
    * retried or dismissed.
    */

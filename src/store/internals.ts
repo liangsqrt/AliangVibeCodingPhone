@@ -43,6 +43,7 @@ import {
 } from '../services/platformTransport';
 import { clearPendingTerminalOutput } from '../services/terminalOutputRegistry';
 import { serverAiMessageToAgent } from '../api/sessions';
+import { orderMessagesBySeq } from '../utils/messageOrder';
 import type { ServerAiTranscriptPage } from '../api/sessions';
 import {
   isAuthoritativeDetail,
@@ -719,7 +720,11 @@ export function serverAiSessionToVibeRun(
     projects.find(p => sameRemotePath(p.path, session.project_path)) ??
     projects.find(p => p.id === session.project_path);
   const model = aiSessionModelLabel(session);
-  const transcript = (session.transcript ?? []).map(serverAiMessageToAgent);
+  // DEBT-05:按会话级 seq 做占位排序,与网页端同契约。数组序在快照截尾/分页
+  // 合并时会丢真实先后,timestamp 跨端写入会倒挂;seq 是唯一可比的先后真值。
+  const transcript = orderMessagesBySeq(
+    (session.transcript ?? []).map(serverAiMessageToAgent),
+  );
   const events = dedupeAgentEvents(
     (session.events ?? []).map(e => ({
       id: e.id,

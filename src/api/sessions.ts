@@ -53,6 +53,12 @@ export interface ServerAiMessage {
   timestamp: string;
   index?: number;
   /**
+   * 会话级单调序号(agent journal 写侧每行落盘时分配)。它是唯一可比的先后
+   * 真值:数组序在「快照限幅截尾 + 本地草稿 + 详情分页」合并时会丢真实先后,
+   * timestamp 跨端写入会倒挂。0/缺字段 = 旧 agent 或本地新气泡。
+   */
+  seq?: number;
+  /**
    * Server-owned Goal id when this message was produced during a Goal-driven
    * run. Absent for ordinary chat. Matches `goal_id` from server Task 8.
    */
@@ -130,6 +136,7 @@ export const serverAiMessageToAgent = (m: ServerAiMessage): AgentMessage => ({
   content: m.content,
   timestamp: m.timestamp,
   index: m.index,
+  seq: m.seq,
   goalId: m.goal_id,
   hiddenAt: m.hidden_at,
   hidden: m.hidden,
